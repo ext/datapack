@@ -1,5 +1,5 @@
 Simple test of compressing and storing datafiles inside executable.
 
-# Simply edit the datafiles
-# Run make
-# ./sample
+1. Simply edit the datafiles
+2. Run make
+3. ./sample

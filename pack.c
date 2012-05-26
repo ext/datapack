@@ -11,12 +11,14 @@
 static unsigned char  in[CHUNK];
 static unsigned char out[CHUNK];
 static const char* program_name = NULL;
+static const char* prefix = "";
 static FILE* verbose = NULL;
 static FILE* normal  = NULL;
 
 static struct option options[] = {
 	{"from-file", required_argument, 0, 'f'},
 	{"output",    required_argument, 0, 'o'},
+	{"prefix",    required_argument, 0, 'p'},
 	{"verbose",   no_argument, 0, 'v'},
 	{"quiet",     no_argument, 0, 'q'},
 	{"help",      no_argument, 0, 'h'},
@@ -29,6 +31,7 @@ static void show_usage(){
 	       "Usage: pack [OPTIONS..] DATANAME:FILENAME..\n"
 	       "  -f, --from-file=FILE    Read list from file.\n"
 	       "  -o, --output=FILE       Write output to file instead of stdout.\n"
+	       "  -p, --prefix=STRING     Prefix all filenames with STRING.\n"
 	       "  -v, --verbose           Enable verbose output.\n"
 	       "  -q, --quiet             Quiet mode, only returning error code.\n"
 	       "  -h, --help              This text.\n", program_name);
@@ -110,7 +113,7 @@ int main(int argc, char* argv[]){
 	memset(entries, 0, sizeof(void*)*max_entries);
 
 	int op, option_index;
-	while ( (op=getopt_long(argc, argv, "f:o:vqh", options, &option_index)) != -1 ){
+	while ( (op=getopt_long(argc, argv, "f:o:p:vqh", options, &option_index)) != -1 ){
 		switch ( op ){
 		case 0:
 			break;
@@ -140,6 +143,10 @@ int main(int argc, char* argv[]){
 
 		case 'o':
 			output = optarg;
+			break;
+
+		case 'p':
+			prefix = optarg;
 			break;
 
 		case 'v':
@@ -178,6 +185,13 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
+	/* prepend prefix (this is deferred as --prefix should apply to --from-file no
+	 * matter what order the arguments are given in */
+	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		snprintf(e->dst, 63, "%s%s", prefix, e->dst);
+	}
+
+	/* output header */
 	fprintf(dst, "#include \"datapack.h\"\n\n");
 
 	/* output binary data */

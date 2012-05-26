@@ -105,7 +105,7 @@ int main(int argc, char* argv[]){
 	const char* output = "/dev/stdout";
 
 	/* init entry table */
-	max_entries = 1;
+	max_entries = 256;
 	entries = malloc(sizeof(void*)*max_entries);
 	memset(entries, 0, sizeof(void*)*max_entries);
 

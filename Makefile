@@ -15,7 +15,7 @@ offsets.c: pack data1.txt data2.txt data3.txt
 	gzip -cn $< > $@
 
 %.o: %.c datapack.h
-	${CC} -Wall -std=c99 -g -c $< -o $@
+	${CC} -Wall -std=c99 -D_GNU_SOURCE -g -c $< -o $@
 
 clean:
 	rm -rf *.o sample pack offsets.c

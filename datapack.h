@@ -12,5 +12,6 @@ struct datapack_file_entry {
 };
 
 int unpack(const struct datapack_file_entry src, char** dst);
+int unpack_filename(const char* filename, char** dst);
 
 #endif /* DATAPACK_H */

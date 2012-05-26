@@ -9,6 +9,9 @@
 #define CHUNK 16384
 static unsigned char  in[CHUNK];
 static unsigned char out[CHUNK];
+static const char* program_name = NULL;
+static FILE* verbose = NULL;
+static FILE* normal  = NULL;
 
 static struct option options[] = {
 	{"from-file", required_argument, 0, 'f'},
@@ -20,19 +23,84 @@ static struct option options[] = {
 };
 
 static void show_usage(){
-	printf("pack-"VERSION"\n"
+	printf("%s-"VERSION"\n"
 	       "(C) 2012 David Sveningsson <ext@sidvind.com>\n"
 	       "Usage: pack [OPTIONS..] DATANAME:FILENAME..\n"
 	       "  -f, --from-file=FILE    Read list from file.\n"
 	       "  -o, --output=FILE       Write output to file instead of stdout.\n"
 	       "  -v, --verbose           Enable verbose output.\n"
 	       "  -q, --quiet             Quiet mode, only returning error code.\n"
-	       "  -h, --help              This text.\n");
+	       "  -h, --help              This text.\n", program_name);
+}
+
+struct entry {
+	char variable[64];
+	char dst[64];
+	char* src;
+	size_t in;
+	size_t out;
+};
+
+static size_t num_entries = 0;
+static size_t max_entries = 0;
+static struct entry* entries = NULL;
+
+static void add_entry(char* str){
+	if ( num_entries+1 == max_entries ){
+		max_entries += 256;
+		entries = realloc(entries, sizeof(void*)*max_entries);
+		memset(entries+num_entries, 0, sizeof(void*)*(max_entries-num_entries));
+	}
+
+	char* vname = str;
+
+	/* locate filename */
+	char* delim = strchr(vname, ':');
+	if ( !delim ){
+		fprintf(normal, "%s: missing delimiter in `%s', ignored.\n", program_name, str);
+		return;
+	}
+	*delim = 0;
+	char* sname = delim+1;
+	char* dname = basename(sname);
+
+	/* locate rename */
+	delim = sname;
+	do {
+		delim = strchr(delim, ':');
+		if ( !delim || *(delim-1) != '\\' ) break;
+	} while (1);
+	if ( delim ){
+		*delim = 0;
+		dname = delim+1;
+	}
+
+	/* store */
+	struct entry* e = &entries[num_entries];
+	sprintf(e->variable, "%.63s", vname);
+	sprintf(e->dst, "%.63s", dname);
+	e->src = strdup(sname);
+	e->in  = 0;
+	e->out = 0;
+	num_entries++;
 }
 
 int main(int argc, char* argv[]){
+	/* extract program name from path. e.g. /path/to/MArCd -> MArCd */
+	const char* separator = strrchr(argv[0], '/');
+	if ( separator ){
+		program_name = separator + 1;
+	} else {
+		program_name = argv[0];
+	}
+
 	int level = 1;
 	const char* output = "/dev/stdout";
+
+	/* init entry table */
+	max_entries = 1;
+	entries = malloc(sizeof(void*)*max_entries);
+	memset(entries, 0, sizeof(void*)*max_entries);
 
 	int op, option_index;
 	while ( (op=getopt_long(argc, argv, "f:o:vqh", options, &option_index)) != -1 ){
@@ -64,8 +132,8 @@ int main(int argc, char* argv[]){
 		}
 	}
 
-	FILE* verbose = fopen(level >= 2 ? "/dev/stderr" : "/dev/null", "w");
-	FILE* normal  = fopen(level >= 1 ? "/dev/stderr" : "/dev/null", "w");
+	verbose = fopen(level >= 2 ? "/dev/stderr" : "/dev/null", "w");
+	normal  = fopen(level >= 1 ? "/dev/stderr" : "/dev/null", "w");
 	FILE* dst = fopen(output, "w");
 
 	int ret;
@@ -76,43 +144,40 @@ int main(int argc, char* argv[]){
 	strm.zfree = Z_NULL;
 	strm.opaque = Z_NULL;
 
-	if ( optind == argc  ){
+	/* read entries from arguments */
+	for ( int i = optind; i < argc; i++ ){
+		add_entry(argv[i]);
+	}
+
+	if ( num_entries == 0 ){
 		fprintf(normal, "usage: c DATANAME:FILENAME..\n");
 		return 1;
 	}
 
-	fprintf(dst, "#include \"datapack.h\"\n");
+	fprintf(dst, "#include \"datapack.h\"\n\n");
 
+	/* output binary data */
 	int files = 0;
-	for ( int set = optind; set < argc; set++ ){
-		char* dataname = argv[set];
-		char* delim = strchr(dataname, ':');
-		if ( !delim ){
-			fprintf(normal, "%s: missing delimiter in `%s', ignored.\n", argv[0], dataname);
-			continue;
-		}
-		*delim = 0;
-		char* filename = delim+1;
-		char* base = basename(filename);
-		fprintf(verbose, "Processing %s from `%s'\n", dataname, filename);
+	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		fprintf(verbose, "Processing %s from `%s' to `%s'\n", e->variable, e->src, e->dst);
 
-		FILE* fp = fopen(filename, "r");
+		FILE* fp = fopen(e->src, "r");
 		if ( !fp ){
-			fprintf(normal, "%s: failed to read `%s', ignored.\n", argv[0], filename);
+			fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
 			continue;
 		}
 
-		fprintf(dst, "static const char %s_buf[] = \"", dataname);
+		fprintf(dst, "static const char %s_buf[] = \"", e->variable);
 
 		ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
 		if (ret != Z_OK)
 			return ret;
 
-		size_t input = 0;
+		size_t bytes_r = 0;
 		size_t bytes = 0;
 		do {
 			strm.avail_in = fread(in, 1, CHUNK, fp);
-			input += strm.avail_in;
+			bytes_r += strm.avail_in;
 			if (ferror(fp)) {
 				deflateEnd(&strm);
 				return Z_ERRNO;
@@ -135,13 +200,29 @@ int main(int argc, char* argv[]){
 		} while (flush != Z_FINISH);
 
 		fprintf(dst, "\";\n");
-		fprintf(dst, "struct datapack_file_entry %s = {\"%.63s\", %s_buf, %zd, %zd};\n", dataname, base, dataname, bytes, input);
+		e->in = bytes;
+		e->out = bytes_r;
 
 		deflateEnd(&strm);
 		files++;
 	}
+	fprintf(dst, "\n");
 
-	fprintf(verbose, "%d datafiles processed\n", files);
+	/* output entries */
+	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		fprintf(dst, "struct datapack_file_entry %s = {\"%.63s\", %s_buf, %zd, %zd};\n",
+		        e->variable, e->dst, e->variable, e->in, e->out);
+	};
+	fprintf(dst, "\n");
+
+	/* output file table */
+	fprintf(dst, "struct datapack_file_entry* filetable[] = {\n");
+	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		fprintf(dst, "\t&%s,\n", e->variable);
+	}
+	fprintf(dst, "\tNULL\n};\n\n");
+
+	fprintf(verbose, "%d datafile(s) processed.\n", files);
 
 	fclose(verbose);
 	fclose(normal);

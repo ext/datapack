@@ -102,7 +102,7 @@ int main(int argc, char* argv[]){
 			continue;
 		}
 
-		fprintf(dst, "static const char %s_buf[] = {", dataname);
+		fprintf(dst, "static const char %s_buf[] = \"", dataname);
 
 		ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
 		if (ret != Z_OK)
@@ -127,14 +127,14 @@ int main(int argc, char* argv[]){
 
 				unsigned int have = CHUNK - strm.avail_out;
 				for ( int i = 0; i < have; i++ ){
-					fprintf(dst, "%s%d", bytes==0?"":",", out[i]);
+					fprintf(dst, "\\x%02X", out[i]);
 					bytes++;
 				}
 
 			} while (strm.avail_out == 0);
 		} while (flush != Z_FINISH);
 
-		fprintf(dst, "};\n");
+		fprintf(dst, "\";\n");
 		fprintf(dst, "struct datapack_file_entry %s = {\"%.63s\", %s_buf, %zd, %zd};\n", dataname, base, dataname, bytes, input);
 
 		deflateEnd(&strm);

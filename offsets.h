@@ -1,19 +1,10 @@
 #ifndef OFFSETS_H
 #define OFFSETS_H
 
-#include <stdint.h>
-#include <stddef.h>
+#include "datapack.h"
 
-struct pack_offset {
-	const char* data; /* compressed data */
-	size_t  in_bytes; /* compressed size */
-	size_t out_bytes; /* uncompressed size */
-};
-
-extern struct pack_offset DATA1;
-extern struct pack_offset DATA2;
-extern struct pack_offset DATA3;
-
-int unpack(const struct pack_offset src, char** dst);
+extern struct datapack_file_entry DATA1;
+extern struct datapack_file_entry DATA2;
+extern struct datapack_file_entry DATA3;
 
 #endif /* OFFSETS_H */

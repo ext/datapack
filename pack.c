@@ -80,7 +80,7 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
-	fprintf(dst, "#include \"offsets.h\"\n");
+	fprintf(dst, "#include \"datapack.h\"\n");
 
 	int files = 0;
 	for ( int set = optind; set < argc; set++ ){
@@ -133,7 +133,7 @@ int main(int argc, char* argv[]){
 		} while (flush != Z_FINISH);
 
 		fprintf(dst, "};\n");
-		fprintf(dst, "struct pack_offset %s = {%s_buf, %zd, %zd};\n", dataname, dataname, bytes, input);
+		fprintf(dst, "struct datapack_file_entry %s = {%s_buf, %zd, %zd};\n", dataname, dataname, bytes, input);
 
 		deflateEnd(&strm);
 		files++;

@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <zlib.h>
-#include "offsets.h"
+#include "datapack.h"
 
 #define CHUNK 16384
 
-int unpack(const struct pack_offset src, char** dstptr){
+int unpack(const struct datapack_file_entry src, char** dstptr){
 	const size_t bufsize = src.out_bytes;
 	char* dst = malloc(bufsize+1); /* must fit null-terminator */
 

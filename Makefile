@@ -14,7 +14,7 @@ offsets.c: pack data1.txt data2.txt data3.txt
 %.gz: %.txt
 	gzip -cn $< > $@
 
-%.o: %.c
+%.o: %.c datapack.h
 	${CC} -Wall -std=c99 -g -c $< -o $@
 
 clean:

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <zlib.h>
 #include <getopt.h>
+#include <libgen.h>
 
 #define VERSION "2"
 #define CHUNK 16384
@@ -92,6 +93,7 @@ int main(int argc, char* argv[]){
 		}
 		*delim = 0;
 		char* filename = delim+1;
+		char* base = basename(filename);
 		fprintf(verbose, "Processing %s from `%s'\n", dataname, filename);
 
 		FILE* fp = fopen(filename, "r");
@@ -133,7 +135,7 @@ int main(int argc, char* argv[]){
 		} while (flush != Z_FINISH);
 
 		fprintf(dst, "};\n");
-		fprintf(dst, "struct datapack_file_entry %s = {%s_buf, %zd, %zd};\n", dataname, dataname, bytes, input);
+		fprintf(dst, "struct datapack_file_entry %s = {\"%.63s\", %s_buf, %zd, %zd};\n", dataname, base, dataname, bytes, input);
 
 		deflateEnd(&strm);
 		files++;

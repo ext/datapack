@@ -1,20 +1,23 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <zlib.h>
+#include <errno.h>
 #include "datapack.h"
 
 #define CHUNK 16384
 
-int unpack(const struct datapack_file_entry src, char** dstptr){
-	const size_t bufsize = src.out_bytes;
+int unpack(const struct datapack_file_entry* src, char** dstptr){
+	*dstptr = NULL;
+	const size_t bufsize = src->out_bytes;
 	char* dst = malloc(bufsize+1); /* must fit null-terminator */
 
 	z_stream strm;
 	strm.zalloc = Z_NULL;
 	strm.zfree = Z_NULL;
 	strm.opaque = Z_NULL;
-	strm.avail_in = src.in_bytes;
-	strm.next_in = (void*)src.data;
+	strm.avail_in = src->in_bytes;
+	strm.next_in = (void*)src->data;
 	int ret = inflateInit(&strm);
 	if (ret != Z_OK)
 		return ret;
@@ -39,3 +42,18 @@ int unpack(const struct datapack_file_entry src, char** dstptr){
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
+int unpack_filename(const char* filename, char** dst){
+	*dst = NULL;
+	extern struct datapack_file_entry* filetable[];
+
+	int i = 0;
+	struct datapack_file_entry* cur = filetable[0];
+	while ( cur ){
+		if ( strcmp(filename, cur->filename) == 0 ){
+			return unpack(cur, dst);
+		}
+		cur = filetable[++i];
+	}
+
+	return ENOENT;
+}

@@ -188,7 +188,9 @@ int main(int argc, char* argv[]){
 	/* prepend prefix (this is deferred as --prefix should apply to --from-file no
 	 * matter what order the arguments are given in */
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		snprintf(e->dst, 63, "%s%s", prefix, e->dst);
+		char tmp[64] = {0,};
+		snprintf(tmp, 63, "%s%s", prefix, e->dst);
+		strcpy(e->dst, tmp);
 	}
 
 	/* output header */

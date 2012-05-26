@@ -4,6 +4,7 @@
 #include <zlib.h>
 #include <getopt.h>
 #include <libgen.h>
+#include <errno.h>
 
 #define VERSION "2"
 #define CHUNK 16384
@@ -50,6 +51,12 @@ static void add_entry(char* str){
 		max_entries += 256;
 		entries = realloc(entries, sizeof(void*)*max_entries);
 		memset(entries+num_entries, 0, sizeof(void*)*(max_entries-num_entries));
+	}
+
+	/* remove trailing newline */
+	const size_t len = strlen(str);
+	if ( str[len-1] == '\n' ){
+		str[len-1] = 0;
 	}
 
 	char* vname = str;
@@ -112,7 +119,24 @@ int main(int argc, char* argv[]){
 			exit(1);
 
 		case 'f':
-			break;
+		{
+			FILE* fp = strcmp(optarg, "-") != 0 ? fopen(optarg, "r") : stdin;
+			if ( !fp ){
+				if ( level >= 1 ) fprintf(stderr, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
+				exit(1);
+			}
+			char* line;
+			size_t bytes;
+			while ( getline(&line, &bytes, fp) != -1 ){
+				add_entry(line);
+			}
+			if ( ferror(fp) ){
+				if ( level >= 1 ) fprintf(stderr, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
+				exit(1);
+			}
+			free(line);
+		}
+		break;
 
 		case 'o':
 			output = optarg;

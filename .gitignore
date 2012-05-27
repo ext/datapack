@@ -17,6 +17,5 @@ datapacker
 files.*
 libdatapack.la
 libtool
-m4
 stamp-h1
 sample

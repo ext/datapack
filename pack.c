@@ -32,14 +32,14 @@ static struct option options[] = {
 static void show_usage(){
 	printf("%s-"VERSION"\n"
 	       "(C) 2012 David Sveningsson <ext@sidvind.com>\n"
-	       "Usage: pack [OPTIONS..] DATANAME:FILENAME..\n"
+	       "Usage: %s [OPTIONS..] DATANAME:FILENAME..\n"
 	       "  -f, --from-file=FILE    Read list from file.\n"
 	       "  -o, --output=FILE       Write output to file instead of stdout.\n"
 	       "  -e, --header=FILE       Write optional header-file.\n"
 	       "  -p, --prefix=STRING     Prefix all filenames with STRING.\n"
 	       "  -v, --verbose           Enable verbose output.\n"
 	       "  -q, --quiet             Quiet mode, only returning error code.\n"
-	       "  -h, --help              This text.\n", program_name);
+	       "  -h, --help              This text.\n", program_name, program_name);
 }
 
 struct entry {

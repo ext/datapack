@@ -9,6 +9,8 @@
 #include <getopt.h>
 #include <libgen.h>
 #include <errno.h>
+#include <ctype.h>
+#include "datapack.h"
 
 #define CHUNK 16384
 static unsigned char  in[CHUNK];
@@ -44,7 +46,7 @@ static void show_usage(){
 
 struct entry {
 	char variable[64];
-	char dst[64];
+	char* dst;
 	char* src;
 	size_t in;
 	size_t out;
@@ -93,7 +95,7 @@ static void add_entry(char* str){
 	/* store */
 	struct entry* e = &entries[num_entries];
 	sprintf(e->variable, "%.63s", vname);
-	sprintf(e->dst, "%.63s", dname);
+	e->dst = strdup(dname);
 	e->src = strdup(sname);
 	e->in  = 0;
 	e->out = 0;
@@ -198,9 +200,9 @@ int main(int argc, char* argv[]){
 	/* prepend prefix (this is deferred as --prefix should apply to --from-file no
 	 * matter what order the arguments are given in */
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		char tmp[64] = {0,};
-		snprintf(tmp, 63, "%s%s", prefix, e->dst);
-		strcpy(e->dst, tmp);
+		char* tmp = e->dst;
+		asprintf(&e->dst, "%s%s", prefix, tmp);
+		free(tmp);
 	}
 
 	/* output header */
@@ -214,7 +216,8 @@ int main(int argc, char* argv[]){
 		FILE* fp = fopen(e->src, "r");
 		if ( !fp ){
 			fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
-			e->dst[0] = 0; /* mark as invalid */
+			free(e->dst);
+			e->dst = NULL; /* mark as invalid */
 			continue;
 		}
 
@@ -255,14 +258,15 @@ int main(int argc, char* argv[]){
 		e->out = bytes_r;
 
 		deflateEnd(&strm);
+		fclose(fp);
 		files++;
 	}
 	fprintf(dst, "\n");
 
 	/* output entries */
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		if ( !e->dst[0] ) continue;
-		fprintf(dst, "struct datapack_file_entry %s = {\"%.63s\", %s_buf, %zd, %zd};\n",
+		if ( !e->dst ) continue;
+		fprintf(dst, "struct datapack_file_entry %s = {\"%s\", %s_buf, %zd, %zd};\n",
 		        e->variable, e->dst, e->variable, e->in, e->out);
 	};
 	fprintf(dst, "\n");
@@ -276,7 +280,7 @@ int main(int argc, char* argv[]){
 		} else {
 			fprintf(fp, "#ifndef DATAPACKER_FILES_H\n#define DATAPACKER_FILES_H\n\n#include \"datapack.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n");
 			for ( struct entry* e = &entries[0]; e->src; e++ ){
-				//if ( !e->dst[0] ) continue;
+				if ( !e->dst ) continue;
 				fprintf(fp, "extern struct datapack_file_entry %s;\n", e->variable);
 			}
 			fprintf(fp, "\n#ifdef __cplusplus\n}\n#endif\n\n#endif /* DATAPACKER_FILES_H */\n");
@@ -287,10 +291,12 @@ int main(int argc, char* argv[]){
 	/* output file table and clear files */
 	fprintf(dst, "struct datapack_file_entry* filetable[] = {\n");
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		if ( e->dst[0] ){
+		if ( e->dst ){
 			fprintf(dst, "\t&%s,\n", e->variable);
 		}
+		free(e->dst);
 		free(e->src);
+		e->dst = NULL;
 		e->src = NULL;
 	}
 	fprintf(dst, "\tNULL\n};\n\n");

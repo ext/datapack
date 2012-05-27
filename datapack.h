@@ -9,7 +9,7 @@ extern "C" {
 #endif
 
 struct datapack_file_entry {
-	const char filename[64];   /* filename (null-terminated) */
+	const char* filename;      /* filename (null-terminated) */
 	const char* data;          /* compressed data */
 	size_t  in_bytes;          /* compressed size */
 	size_t out_bytes;          /* uncompressed size */

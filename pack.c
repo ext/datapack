@@ -1,3 +1,7 @@
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,7 +10,6 @@
 #include <libgen.h>
 #include <errno.h>
 
-#define VERSION "2"
 #define CHUNK 16384
 static unsigned char  in[CHUNK];
 static unsigned char out[CHUNK];

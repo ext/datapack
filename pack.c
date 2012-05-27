@@ -204,6 +204,7 @@ int main(int argc, char* argv[]){
 		FILE* fp = fopen(e->src, "r");
 		if ( !fp ){
 			fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
+			e->dst[0] = 0; /* mark as invalid */
 			continue;
 		}
 
@@ -250,6 +251,7 @@ int main(int argc, char* argv[]){
 
 	/* output entries */
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		if ( !e->dst[0] ) continue;
 		fprintf(dst, "struct datapack_file_entry %s = {\"%.63s\", %s_buf, %zd, %zd};\n",
 		        e->variable, e->dst, e->variable, e->in, e->out);
 	};
@@ -258,7 +260,9 @@ int main(int argc, char* argv[]){
 	/* output file table and clear files */
 	fprintf(dst, "struct datapack_file_entry* filetable[] = {\n");
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		fprintf(dst, "\t&%s,\n", e->variable);
+		if ( e->dst[0] ){
+			fprintf(dst, "\t&%s,\n", e->variable);
+		}
 		free(e->src);
 		e->src = NULL;
 	}

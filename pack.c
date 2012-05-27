@@ -18,6 +18,7 @@ static FILE* normal  = NULL;
 static struct option options[] = {
 	{"from-file", required_argument, 0, 'f'},
 	{"output",    required_argument, 0, 'o'},
+	{"header",    required_argument, 0, 'e'},
 	{"prefix",    required_argument, 0, 'p'},
 	{"verbose",   no_argument, 0, 'v'},
 	{"quiet",     no_argument, 0, 'q'},
@@ -31,6 +32,7 @@ static void show_usage(){
 	       "Usage: pack [OPTIONS..] DATANAME:FILENAME..\n"
 	       "  -f, --from-file=FILE    Read list from file.\n"
 	       "  -o, --output=FILE       Write output to file instead of stdout.\n"
+	       "  -e, --header=FILE       Write optional header-file.\n"
 	       "  -p, --prefix=STRING     Prefix all filenames with STRING.\n"
 	       "  -v, --verbose           Enable verbose output.\n"
 	       "  -q, --quiet             Quiet mode, only returning error code.\n"
@@ -106,6 +108,7 @@ int main(int argc, char* argv[]){
 
 	int level = 1;
 	const char* output = "/dev/stdout";
+	const char* header = NULL;
 
 	/* init entry table */
 	max_entries = 256;
@@ -113,7 +116,7 @@ int main(int argc, char* argv[]){
 	memset(entries, 0, sizeof(void*)*max_entries);
 
 	int op, option_index;
-	while ( (op=getopt_long(argc, argv, "f:o:p:vqh", options, &option_index)) != -1 ){
+	while ( (op=getopt_long(argc, argv, "f:o:e:p:vqh", options, &option_index)) != -1 ){
 		switch ( op ){
 		case 0:
 			break;
@@ -143,6 +146,10 @@ int main(int argc, char* argv[]){
 
 		case 'o':
 			output = optarg;
+			break;
+
+		case 'e':
+			header = optarg;
 			break;
 
 		case 'p':
@@ -256,6 +263,23 @@ int main(int argc, char* argv[]){
 		        e->variable, e->dst, e->variable, e->in, e->out);
 	};
 	fprintf(dst, "\n");
+
+	/* output file header */
+	if ( header ){
+		fprintf(verbose, "%s: writing file header to `%s'\n", program_name, header);
+		FILE* fp = fopen(header, "w");
+		if ( !fp ){
+			fprintf(normal, "%s: failed to write header to `%s': %s\n", program_name, header, strerror(errno));
+		} else {
+			fprintf(fp, "#ifndef DATAPACKER_FILES_H\n#define DATAPACKER_FILES_H\n\n#include \"datapack.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n");
+			for ( struct entry* e = &entries[0]; e->src; e++ ){
+				//if ( !e->dst[0] ) continue;
+				fprintf(fp, "extern struct datapack_file_entry %s;\n", e->variable);
+			}
+			fprintf(fp, "\n#ifdef __cplusplus\n}\n#endif\n\n#endif /* DATAPACKER_FILES_H */\n");
+			fclose(fp);
+		}
+	}
 
 	/* output file table and clear files */
 	fprintf(dst, "struct datapack_file_entry* filetable[] = {\n");

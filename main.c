@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "offsets.h"
+#include "files.h"
 
 int main(int argc, const char* argv[]){
 	char* d1; unpack(&DATA1, &d1);

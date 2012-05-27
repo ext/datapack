@@ -92,6 +92,18 @@ static void add_entry(char* str){
 		dname = delim+1;
 	}
 
+	/* sanity check */
+	if ( strlen(vname) >= 64 ){
+		fprintf(normal, "%s: variable name `%s' too long (max: 63, current: %zd), ignored\n", program_name, vname, strlen(vname));
+		return;
+	}
+	for ( int i = 0; i < strlen(vname); i++ ){
+		if ( !(isalnum(vname[i]) || vname[i] == '_') ){
+			fprintf(normal, "%s: variable name `%s' contains illegal characters, ignored\n", program_name, vname);
+			return;
+		}
+	}
+
 	/* store */
 	struct entry* e = &entries[num_entries];
 	sprintf(e->variable, "%.63s", vname);

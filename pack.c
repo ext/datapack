@@ -255,17 +255,22 @@ int main(int argc, char* argv[]){
 	};
 	fprintf(dst, "\n");
 
-	/* output file table */
+	/* output file table and clear files */
 	fprintf(dst, "struct datapack_file_entry* filetable[] = {\n");
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
 		fprintf(dst, "\t&%s,\n", e->variable);
+		free(e->src);
+		e->src = NULL;
 	}
 	fprintf(dst, "\tNULL\n};\n\n");
 
 	fprintf(verbose, "%d datafile(s) processed.\n", files);
 
+	fclose(dst);
 	fclose(verbose);
 	fclose(normal);
+	free(entries);
+	entries = NULL;
 
 	return Z_OK;
 }

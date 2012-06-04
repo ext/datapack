@@ -11,7 +11,39 @@
 
 #define CHUNK 16384
 
+static const char* local = NULL;
+
+int unpack_override(const char* dir){
+	local = dir;
+	return 0;
+}
+
 int unpack(const struct datapack_file_entry* src, char** dstptr){
+	if ( local ){
+		char* local_path;
+		asprintf(&local_path, "%s%s", local, src->filename);
+
+		FILE* fp = fopen(local_path, "r");
+		free(local_path);
+
+		if ( fp ){
+			fseek(fp, 0, SEEK_END);
+			const long size = ftell(fp);
+			fseek(fp, 0, SEEK_SET);
+
+			char* dst = malloc(size+1); /* must fit null-terminator */
+			if ( fread(dst, size, 1, fp) == 0 ){
+				return errno;
+			}
+
+			dst[size] = 0; /* force null-terminator */
+			*dstptr = dst; /* return pointer to caller */
+			fclose(fp);
+
+			return 0;
+		}
+	}
+
 	*dstptr = NULL;
 	const size_t bufsize = src->out_bytes;
 	char* dst = malloc(bufsize+1); /* must fit null-terminator */

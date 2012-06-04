@@ -10,5 +10,6 @@ AC_CONFIG_FILES([Makefile])
 AC_GNU_SOURCE
 AC_PROG_CC_C99
 AC_PROG_LIBTOOL([disable-static])
+AC_DEFINE_UNQUOTED([SRCDIR], ["${srcdir}/"], [srcdir])
 
 AC_OUTPUT

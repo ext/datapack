@@ -25,6 +25,7 @@ static struct option options[] = {
 	{"output",    required_argument, 0, 'o'},
 	{"header",    required_argument, 0, 'e'},
 	{"prefix",    required_argument, 0, 'p'},
+	{"srcdir",    required_argument, 0, 's'},
 	{"verbose",   no_argument, 0, 'v'},
 	{"quiet",     no_argument, 0, 'q'},
 	{"help",      no_argument, 0, 'h'},
@@ -44,6 +45,7 @@ static void show_usage(){
 	       "  -o, --output=FILE       Write output to file instead of stdout.\n"
 	       "  -e, --header=FILE       Write optional header-file.\n"
 	       "  -p, --prefix=STRING     Prefix all targets with STRING.\n"
+	       "  -s, --srcdir=DIR        Read all files from DIR instead of current directory.\n"
 	       "  -v, --verbose           Enable verbose output.\n"
 	       "  -q, --quiet             Quiet mode, only returning error code.\n"
 	       "  -h, --help              This text.\n", program_name, program_name);
@@ -131,6 +133,7 @@ int main(int argc, char* argv[]){
 	int level = 1;
 	const char* output = "/dev/stdout";
 	const char* header = NULL;
+	const char* srcdir = ".";
 
 	/* init entry table */
 	max_entries = 256;
@@ -179,6 +182,10 @@ int main(int argc, char* argv[]){
 			prefix = optarg;
 			break;
 
+		case 's':
+			srcdir = optarg;
+			break;
+
 		case 'v':
 			level = 2;
 			break;
@@ -215,10 +222,26 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
-	/* prepend prefix (this is deferred as --prefix should apply to --from-file no
-	 * matter what order the arguments are given in */
+	/* strip trailing slash from srcdir (will be appended later). Ensures
+	 * consistency both with or without the trailing slash. */
+	{
+		size_t len = strlen(srcdir);
+		if ( srcdir[len-1] == '/' ) len--;
+		srcdir = strndup(srcdir, len);
+	}
+
+	/* prepend prefixes to both src and dst. (this is deferred as --prefix should apply to
+	 * --from-file no matter what order the arguments are given in) */
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		char* tmp = e->dst;
+		char* tmp;
+
+		/* prepend srcdir to src path */
+		tmp = e->src;
+		asprintf(&e->src, "%s/%s", srcdir, tmp);
+		free(tmp);
+
+		/* prepend prefix to dst path */
+		tmp = e->dst;
 		asprintf(&e->dst, "%s%s", prefix, tmp);
 		free(tmp);
 	}
@@ -324,6 +347,7 @@ int main(int argc, char* argv[]){
 	fclose(dst);
 	fclose(verbose);
 	fclose(normal);
+	free((char*)srcdir);
 	free(entries);
 	entries = NULL;
 

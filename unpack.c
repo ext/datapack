@@ -144,10 +144,6 @@ static ssize_t unpack_read(void* cookie, char* buf, size_t size){
 	return bytes;
 }
 
-static ssize_t unpack_write(void *cookie, const char *buf, size_t size){
-	return -1;
-}
-
 static int unpack_close(void *cookie){
 	struct unpack_cookie_data* ctx = (struct unpack_cookie_data*)cookie;
 
@@ -159,7 +155,7 @@ static int unpack_close(void *cookie){
 
 static cookie_io_functions_t unpack_cookie_func = {
 	unpack_read,
-	unpack_write,
+	NULL,
 	NULL,
 	unpack_close
 };
@@ -169,6 +165,36 @@ FILE* unpack_open(const char* filename, const char* mode){
 	if ( !entry ){
 		errno = ENOENT;
 		return NULL;
+	}
+
+	const int write = strchr(mode, 'w') || strchr(mode, 'a');
+	const int read = !write;
+
+	/* allow overriding with local path */
+	if ( read && local ){
+		char* local_path;
+		asprintf(&local_path, "%s%s", local, filename);
+		FILE* fp = fopen(local_path, mode);
+		free(local_path);
+		if ( fp ){
+			return fp;
+		}
+	}
+
+	if ( write ) {
+		/* ensure write is done in local mode */
+		if ( !local ){
+			errno = EPERM;
+			return NULL;
+		}
+
+		/* give file pointer directly from fopen */
+		char* local_path;
+		asprintf(&local_path, "%s%s", local, filename);
+		FILE* fp = fopen(local_path, mode);
+		free(local_path);
+
+		return fp;
 	}
 
 	struct unpack_cookie_data* ctx = malloc(sizeof(struct unpack_cookie_data));

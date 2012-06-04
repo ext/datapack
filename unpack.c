@@ -14,14 +14,19 @@
 static const char* local = NULL;
 
 int unpack_override(const char* dir){
-	local = dir;
+	free((char*)local);
+
+	size_t len = strlen(dir);
+	if ( dir[len-1] == '/' ) len--;
+	local = strndup(dir, len);
+
 	return 0;
 }
 
 int unpack(const struct datapack_file_entry* src, char** dstptr){
 	if ( local ){
 		char* local_path;
-		if ( asprintf(&local_path, "%s%s", local, src->filename) == -1 ){
+		if ( asprintf(&local_path, "%s/%s", local, src->filename) == -1 ){
 			return errno;
 		}
 
@@ -173,7 +178,7 @@ FILE* unpack_open(const char* filename, const char* mode){
 	/* allow overriding with local path */
 	if ( read && local ){
 		char* local_path;
-		asprintf(&local_path, "%s%s", local, filename);
+		asprintf(&local_path, "%s/%s", local, filename);
 		FILE* fp = fopen(local_path, mode);
 		free(local_path);
 		if ( fp ){
@@ -190,7 +195,7 @@ FILE* unpack_open(const char* filename, const char* mode){
 
 		/* give file pointer directly from fopen */
 		char* local_path;
-		asprintf(&local_path, "%s%s", local, filename);
+		asprintf(&local_path, "%s/%s", local, filename);
 		FILE* fp = fopen(local_path, mode);
 		free(local_path);
 

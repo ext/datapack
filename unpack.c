@@ -80,18 +80,28 @@ int unpack(const struct datapack_file_entry* src, char** dstptr){
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
-int unpack_filename(const char* filename, char** dst){
-	*dst = NULL;
+static struct datapack_file_entry* unpack_find(const char* filename){
 	extern struct datapack_file_entry* filetable[];
+	struct datapack_file_entry* cur = filetable[0];
 
 	int i = 0;
-	struct datapack_file_entry* cur = filetable[0];
 	while ( cur ){
 		if ( strcmp(filename, cur->filename) == 0 ){
-			return unpack(cur, dst);
+			return cur;
 		}
 		cur = filetable[++i];
 	}
 
-	return ENOENT;
+	return NULL;
+}
+
+int unpack_filename(const char* filename, char** dst){
+	*dst = NULL;
+
+	struct datapack_file_entry* entry = unpack_find(filename);
+	if ( !entry ){
+		return ENOENT;
+	}
+
+	return unpack(entry, dst);
 }

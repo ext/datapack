@@ -4,7 +4,7 @@
 
 int main(int argc, const char* argv[]){
 	char* d1; unpack(&DATA1, &d1);
-	char* d2; unpack(&DATA2, &d2);
+	char* d2; unpack_filename("spam.txt", &d2);
 	char* d3; unpack_filename("data3.txt", &d3);
 
 	printf("data1: %s\n", d1);

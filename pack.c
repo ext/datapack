@@ -153,8 +153,8 @@ int main(int argc, char* argv[]){
 				if ( level >= 1 ) fprintf(stderr, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
 				exit(1);
 			}
-			char* line;
-			size_t bytes;
+			char* line = NULL;
+			size_t bytes = 0;
 			while ( getline(&line, &bytes, fp) != -1 ){
 				add_entry(line);
 			}

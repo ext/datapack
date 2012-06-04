@@ -141,7 +141,7 @@ int main(int argc, char* argv[]){
 	memset(entries, 0, sizeof(void*)*max_entries);
 
 	int op, option_index;
-	while ( (op=getopt_long(argc, argv, "f:o:e:p:vqh", options, &option_index)) != -1 ){
+	while ( (op=getopt_long(argc, argv, "f:o:e:p:s:vqh", options, &option_index)) != -1 ){
 		switch ( op ){
 		case 0:
 			break;

@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <errno.h>
 #include "datapack.h"
 
@@ -111,6 +113,31 @@ int unpack_filename(const char* filename, char** dst){
 	return unpack(entry, dst);
 }
 
+/**
+ * Recursive mkdir.
+ */
+static void rec_mkdir(const char *path){
+	char* tmp = strdup(path);
+	const size_t len = strlen(tmp);
+	if ( tmp[len-1] == '/' ) tmp[len-1] = 0;
+
+	for ( char* p = tmp; *p; p++ ){
+		if ( *p != '/') continue;
+
+		*p = 0;
+		if ( access(tmp, F_OK) ){
+			mkdir(tmp, S_IRWXU);
+		}
+		*p = '/';
+	}
+
+	if ( access(tmp, F_OK) ){
+		mkdir(tmp, S_IRWXU);
+	}
+
+	free(tmp);
+}
+
 struct unpack_cookie_data {
 	const struct datapack_file_entry* src;
 	z_stream strm;
@@ -192,6 +219,9 @@ FILE* unpack_open(const char* filename, const char* mode){
 			errno = EPERM;
 			return NULL;
 		}
+
+		/* ensure directory exists */
+		rec_mkdir(local);
 
 		/* give file pointer directly from fopen */
 		char* local_path;

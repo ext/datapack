@@ -23,6 +23,7 @@ static FILE* normal  = NULL;
 static struct option options[] = {
 	{"from-file", required_argument, 0, 'f'},
 	{"output",    required_argument, 0, 'o'},
+	{"deps",      required_argument, 0, 'd'},
 	{"header",    required_argument, 0, 'e'},
 	{"prefix",    required_argument, 0, 'p'},
 	{"srcdir",    required_argument, 0, 's'},
@@ -43,6 +44,7 @@ static void show_usage(){
 	       "Options:\n"
 	       "  -f, --from-file=FILE    Read list from file (same format, one entry per line).\n"
 	       "  -o, --output=FILE       Write output to file instead of stdout.\n"
+	       "  -d, --deps=FILE         Write optional Makefile dependency list.\n"
 	       "  -e, --header=FILE       Write optional header-file.\n"
 	       "  -p, --prefix=STRING     Prefix all targets with STRING.\n"
 	       "  -s, --srcdir=DIR        Read all files from DIR instead of current directory.\n"
@@ -132,6 +134,7 @@ int main(int argc, char* argv[]){
 
 	int level = 1;
 	const char* output = "/dev/stdout";
+	const char* deps = NULL;
 	const char* header = NULL;
 	const char* srcdir = ".";
 
@@ -141,7 +144,7 @@ int main(int argc, char* argv[]){
 	memset(entries, 0, sizeof(void*)*max_entries);
 
 	int op, option_index;
-	while ( (op=getopt_long(argc, argv, "f:o:e:p:s:vqh", options, &option_index)) != -1 ){
+	while ( (op=getopt_long(argc, argv, "f:o:d:e:p:s:vqh", options, &option_index)) != -1 ){
 		switch ( op ){
 		case 0:
 			break;
@@ -174,6 +177,10 @@ int main(int argc, char* argv[]){
 			output = optarg;
 			break;
 
+		case 'd':
+			deps = optarg;
+			break;
+
 		case 'e':
 			header = optarg;
 			break;
@@ -198,6 +205,12 @@ int main(int argc, char* argv[]){
 			show_usage();
 			exit(0);
 		}
+	}
+
+	/* bail out if trying to write Makefile dependencies when no filename is given */
+	if ( deps && strcmp(output, "/dev/stdout") == 0 ){
+		fprintf(stderr, "%s: cannot write Makefile dependencies when writing output to stdout, must set filename with -o\n", program_name);
+		return 1;
 	}
 
 	verbose = fopen(level >= 2 ? "/dev/stderr" : "/dev/null", "w");
@@ -311,6 +324,23 @@ int main(int argc, char* argv[]){
 		        e->variable, e->dst, e->variable, e->in, e->out);
 	};
 	fprintf(dst, "\n");
+
+	/* output Makefile dependencies */
+	if ( deps ){
+		fprintf(verbose, "%s: writing Makefile dependencies to `%s'\n", program_name, deps);
+		FILE* fp = fopen(deps, "w");
+		if ( !fp ){
+			fprintf(normal, "%s: failed to write Makefile dependencies to `%s': %s\n", program_name, deps, strerror(errno));
+		} else {
+			fprintf(fp, "%s: \\\n", output);
+			for ( struct entry* e = &entries[0]; e->src; e++ ){
+				if ( !e->dst ) continue;
+				fprintf(fp, "\t%s \\\n", e->src);
+			}
+			fprintf(fp, "\n");
+			fclose(fp);
+		}
+	}
 
 	/* output file header */
 	if ( header ){

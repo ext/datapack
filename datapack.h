@@ -1,6 +1,7 @@
 #ifndef DATAPACK_H
 #define DATAPACK_H
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -26,6 +27,19 @@ int unpack(const struct datapack_file_entry* src, char** dst);
  * Allocated memory should be freed using free(3).
  */
 int unpack_filename(const char* filename, char** dst);
+
+/**
+ * Open packed file as stream.
+ *
+ * For writing to work override must be enabled and user must have write
+ * permission to the directory. If override is disabled it return EPERM.
+ * In addition, even for writing it requires that the file already exists as an
+ * entry. It cannot be used to create arbitrary files.
+ *
+ * @return FILE pointer or NULL on errors and errno is set to indicate the error.
+ * @error ENOENT if the file does not exists, whenever mode is read or write.
+ */
+FILE* unpack_open(const char* filename, const char* mode);
 
 /**
  * Allow user to override files by placing them in dir using the destination

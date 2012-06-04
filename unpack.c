@@ -105,3 +105,86 @@ int unpack_filename(const char* filename, char** dst){
 
 	return unpack(entry, dst);
 }
+
+struct unpack_cookie_data {
+	const struct datapack_file_entry* src;
+	z_stream strm;
+	size_t bufsize;
+	unsigned char buffer[CHUNK];
+};
+
+static ssize_t unpack_read(void* cookie, char* buf, size_t size){
+	struct unpack_cookie_data* ctx = (struct unpack_cookie_data*)cookie;
+
+	const size_t left = CHUNK - ctx->bufsize;
+
+	if ( ctx->strm.avail_in > 0 ){
+		ctx->strm.avail_out = left;
+		ctx->strm.next_out  = &ctx->buffer[ctx->bufsize];
+
+		int ret = inflate(&ctx->strm, Z_NO_FLUSH);
+		switch (ret) {
+		case Z_NEED_DICT:
+		case Z_DATA_ERROR:
+		case Z_MEM_ERROR:
+			inflateEnd(&ctx->strm);
+			errno = EIO;
+			return -1;
+		}
+
+		ctx->bufsize += left - ctx->strm.avail_out;
+	}
+
+	const size_t bytes = size < ctx->bufsize ? size : ctx->bufsize;
+
+	memcpy(buf, ctx->buffer, bytes);
+	memmove(ctx->buffer, &ctx->buffer[size], bytes);
+	ctx->bufsize -= bytes;
+
+	return bytes;
+}
+
+static ssize_t unpack_write(void *cookie, const char *buf, size_t size){
+	return -1;
+}
+
+static int unpack_close(void *cookie){
+	struct unpack_cookie_data* ctx = (struct unpack_cookie_data*)cookie;
+
+	inflateEnd(&ctx->strm);
+	free(ctx);
+
+	return 0;
+}
+
+static cookie_io_functions_t unpack_cookie_func = {
+	unpack_read,
+	unpack_write,
+	NULL,
+	unpack_close
+};
+
+FILE* unpack_open(const char* filename, const char* mode){
+	struct datapack_file_entry* entry = unpack_find(filename);
+	if ( !entry ){
+		errno = ENOENT;
+		return NULL;
+	}
+
+	struct unpack_cookie_data* ctx = malloc(sizeof(struct unpack_cookie_data));
+	ctx->src = entry;
+	ctx->bufsize = 0;
+
+	ctx->strm.avail_in = entry->in_bytes;
+	ctx->strm.next_in = (unsigned char*)entry->data;
+	ctx->strm.zalloc = Z_NULL;
+	ctx->strm.zfree = Z_NULL;
+	ctx->strm.opaque = Z_NULL;
+	int ret = inflateInit(&ctx->strm);
+	if (ret != Z_OK){
+		errno = EBADFD;
+		return NULL;
+	}
+
+	return fopencookie(ctx, mode, unpack_cookie_func);
+}

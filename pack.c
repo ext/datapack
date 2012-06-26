@@ -20,6 +20,9 @@ static const char* prefix = "";
 static FILE* verbose = NULL;
 static FILE* normal  = NULL;
 
+static const char* struct_attrib = "";
+static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
+
 static struct option options[] = {
 	{"from-file", required_argument, 0, 'f'},
 	{"output",    required_argument, 0, 'o'},
@@ -281,7 +284,7 @@ int main(int argc, char* argv[]){
 			continue;
 		}
 
-		fprintf(dst, "static const char %s_buf[] = \"", e->variable);
+		fprintf(dst, "static const char %s_buf[] %s = \"", e->variable, data_attrib);
 
 		ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
 		if (ret != Z_OK)
@@ -326,8 +329,8 @@ int main(int argc, char* argv[]){
 	/* output entries */
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
 		if ( !e->dst ) continue;
-		fprintf(dst, "struct datapack_file_entry %s = {\"%s\", %s_buf, %zd, %zd};\n",
-		        e->variable, e->dst, e->variable, e->in, e->out);
+		fprintf(dst, "struct datapack_file_entry %s %s = {\"%s\", %s_buf, %zd, %zd};\n",
+		        e->variable, struct_attrib, e->dst, e->variable, e->in, e->out);
 	};
 	fprintf(dst, "\n");
 

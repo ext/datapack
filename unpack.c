@@ -21,7 +21,9 @@ int unpack_override(const char* dir){
 int unpack(const struct datapack_file_entry* src, char** dstptr){
 	if ( local ){
 		char* local_path;
-		asprintf(&local_path, "%s%s", local, src->filename);
+		if ( asprintf(&local_path, "%s%s", local, src->filename) == -1 ){
+			return errno;
+		}
 
 		FILE* fp = fopen(local_path, "r");
 		free(local_path);

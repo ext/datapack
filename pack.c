@@ -250,12 +250,18 @@ int main(int argc, char* argv[]){
 
 		/* prepend srcdir to src path */
 		tmp = e->src;
-		asprintf(&e->src, "%s/%s", srcdir, tmp);
+		if ( asprintf(&e->src, "%s/%s", srcdir, tmp) == -1 ){
+			perror(program_name);
+			return 1;
+		}
 		free(tmp);
 
 		/* prepend prefix to dst path */
 		tmp = e->dst;
-		asprintf(&e->dst, "%s%s", prefix, tmp);
+		if ( asprintf(&e->dst, "%s%s", prefix, tmp) == -1 ){
+			perror(program_name);
+			return 1;
+		}
 		free(tmp);
 	}
 

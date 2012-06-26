@@ -1,5 +1,13 @@
 Simple test of compressing and storing datafiles inside executable.
 
+# Features
+
+* Packs datafiles directly into executable.
+* Compression using zlib.
+* Allows users to override files (must be explicitly enabled)
+* API to access files in-memory (entire file is loaded into memory)
+* Supports FILE* for reading/writing (data is streamed).
+
 # Usage
 
 1. Create ando/or edit datafiles
@@ -14,3 +22,14 @@ Simple test of compressing and storing datafiles inside executable.
 1. ./configure
 2. make
 3. make install
+
+# Using with automake
+
+See Makefile.am for real example.
+
+    files.c: datapacker Makefile
+    	$(AM_V_GEN)./datapacker -f ${top_srcdir}/datafiles -s ${top_srcdir} -d $(DEPDIR)/files.data -o files.c -e files.h
+    
+    -include ./$(DEPDIR)/files.data
+
+where `datafiles` is a list of files to pack.

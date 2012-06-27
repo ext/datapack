@@ -18,6 +18,6 @@ sample_SOURCES = files.c sample/main.c
 CLEANFILES = files.c files.h
 
 files.c: ${top_srcdir}/sample/datafiles datapacker Makefile
-	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s ${top_srcdir}/sample -d $(DEPDIR)/files.data -o $@ -e files.h
+	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s $(dir $<) -d $(DEPDIR)/$(notdir $<).d -o $@ -e $(basename $@).h
 
--include ./$(DEPDIR)/files.data
+-include ./$(DEPDIR)/datafiles.d

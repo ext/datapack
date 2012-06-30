@@ -1,12 +1,15 @@
 AM_CFLAGS = -I ${top_srcdir}
 
+DATAFILES = files.dpl
 noinst_PROGRAMS = sample
 sample_LDADD = ../libdatapack.la
-sample_SOURCES = files.c main.c
+sample_SOURCES = $(DATAFILES) main.c
 
-CLEANFILES = files.c files.h
+BUILT_SOURCES = $(DATAFILES:.dpl=.c)
+CLEANFILES = $(DATAFILES:.dpl=.c) $(DATAFILES:.dpl=.h)
 
-files.c: datafiles Makefile
-	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s $(dir $<) -d $(DEPDIR)/$(notdir $<).d -o $@ -e $(basename $@).h
+.dpl.c:
+	@test x"$(@D)" = x || $(MKDIR_P) "$(@D)"
+	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s $(dir $<) -d $(DEPDIR)/$(notdir $<).d -e $(basename $@).h -o $@
 
--include ./$(DEPDIR)/datafiles.d
+-include ./$(DEPDIR)/$(DATAFILES:.dpl=.dpl.d)

@@ -127,6 +127,15 @@ static void add_entry(char* str){
 		}
 	}
 
+	/* locate duplicates */
+	for ( int i = 0; i < num_entries; i++ ){
+		const struct entry* e = &entries[i];
+		if ( strcmp(e->variable, vname) == 0 ){
+			fprintf(normal, "%s: duplicate variable name `%s', ignored.\n", program_name, vname);
+			return;
+		}
+	}
+
 	/* store */
 	struct entry* e = &entries[num_entries];
 	sprintf(e->variable, "%.63s", vname);

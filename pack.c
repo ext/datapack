@@ -23,6 +23,7 @@ static const char* program_name = NULL;
 static const char* prefix = "";
 static FILE* verbose = NULL;
 static FILE* normal  = NULL;
+static int file_given = 0; /* 1 if '-f' was given */
 
 static const char* struct_attrib = "";
 static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
@@ -271,6 +272,7 @@ int main(int argc, char* argv[]){
 			free(line);
 			fclose(fp);
 		}
+		file_given = 1;
 		break;
 
 		case 'o':
@@ -334,8 +336,11 @@ int main(int argc, char* argv[]){
 		add_entry(argv[i]);
 	}
 
-	if ( num_entries == 0 ){
-		fprintf(normal, "usage: c DATANAME:FILENAME..\n");
+	/* bail out if there is no files to pack. If '-f' was given but it was empty
+	 * it is probably what the user want so let it generate an empty pack. */
+	if ( num_entries == 0 && file_given == 0 ){
+		fprintf(stderr, "%s: no files given.\n", program_name);
+		fprintf(normal, "usage: %s DATANAME:FILENAME..\n", program_name);
 		return 1;
 	}
 

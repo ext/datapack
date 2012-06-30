@@ -79,7 +79,7 @@ static size_t num_entries = 0;
 static size_t max_entries = 0;
 static struct entry* entries = NULL;
 
-static void add_entry(char* str){
+static int add_entry(char* str){
 	if ( num_entries+1 == max_entries ){
 		max_entries += 256;
 		entries = realloc(entries, sizeof(void*)*max_entries);
@@ -97,8 +97,8 @@ static void add_entry(char* str){
 	/* locate filename */
 	char* delim = strchr(vname, ':');
 	if ( !delim ){
-		fprintf(normal, "%s: missing delimiter in `%s', ignored.\n", program_name, str);
-		return;
+		fprintf(normal, "%s: missing delimiter in `%s'.\n", program_name, str);
+		return 0;
 	}
 	*delim = 0;
 	char* sname = delim+1;
@@ -117,13 +117,13 @@ static void add_entry(char* str){
 
 	/* sanity check */
 	if ( strlen(vname) >= 64 ){
-		fprintf(normal, "%s: variable name `%s' too long (max: 63, current: %zd), ignored\n", program_name, vname, strlen(vname));
-		return;
+		fprintf(normal, "%s: variable name `%s' too long (max: 63, current: %zd)\n", program_name, vname, strlen(vname));
+		return 0;
 	}
 	for ( int i = 0; i < strlen(vname); i++ ){
 		if ( !(isalnum(vname[i]) || vname[i] == '_') ){
-			fprintf(normal, "%s: variable name `%s' contains illegal characters, ignored\n", program_name, vname);
-			return;
+			fprintf(normal, "%s: variable name `%s' contains illegal characters.\n", program_name, vname);
+			return 0;
 		}
 	}
 
@@ -131,8 +131,8 @@ static void add_entry(char* str){
 	for ( int i = 0; i < num_entries; i++ ){
 		const struct entry* e = &entries[i];
 		if ( strcmp(e->variable, vname) == 0 ){
-			fprintf(normal, "%s: duplicate variable name `%s', ignored.\n", program_name, vname);
-			return;
+			fprintf(normal, "%s: duplicate variable name `%s'.\n", program_name, vname);
+			return 0;
 		}
 	}
 
@@ -145,6 +145,8 @@ static void add_entry(char* str){
 	e->out = 0;
 	e->lnk = NULL;
 	num_entries++;
+
+	return 1;
 }
 
 static struct entry * find_entry(const char * path) {
@@ -282,7 +284,9 @@ int main(int argc, char* argv[]){
 			char* line = NULL;
 			size_t bytes = 0;
 			while ( getline(&line, &bytes, fp) != -1 ){
-				add_entry(line);
+				if ( !add_entry(line) && missing_fatal ){
+					exit(1);
+				}
 			}
 			if ( ferror(fp) ){
 				fprintf(normal, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
@@ -360,7 +364,10 @@ int main(int argc, char* argv[]){
 
 	/* read entries from arguments */
 	for ( int i = optind; i < argc; i++ ){
-		add_entry(argv[i]);
+		char* line = argv[i];
+		if ( !add_entry(line) && missing_fatal ){
+			exit(1);
+		}
 	}
 
 	/* bail out if there is no files to pack. If '-f' was given but it was empty

@@ -512,7 +512,7 @@ int main(int argc, char* argv[]){
 			fprintf(fp, "%s: \\\n", output);
 			for ( struct entry* e = &entries[0]; e->src; e++ ){
 				if ( !e->dst ) continue;
-				fprintf(fp, "\t%s \\\n", e->src);
+				fprintf(fp, "\t%s %s\n", e->src, (e+1)->src ? "\\" : "");
 			}
 			fprintf(fp, "\n");
 			fclose(fp);

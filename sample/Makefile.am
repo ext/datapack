@@ -12,4 +12,4 @@ CLEANFILES = $(DATAFILES:.dpl=.c) $(DATAFILES:.dpl=.h)
 	@test x"$(@D)" = x || $(MKDIR_P) "$(@D)"
 	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s $(dir $<) -d $(DEPDIR)/$(notdir $<).d -e $(basename $@).h -o $@
 
--include ./$(DEPDIR)/$(DATAFILES:.dpl=.dpl.d)
+-include $(addprefix ./$(DEPDIR)/, $(basename $(DATAFILES:.dpl=.dpl.d)))

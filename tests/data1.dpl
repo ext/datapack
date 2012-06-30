@@ -1,0 +1,2 @@
+TEST_DATA_1:data1.txt
+TEST_DATA_2:data1.txt:data2.txt

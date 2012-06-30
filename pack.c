@@ -24,6 +24,7 @@ static const char* prefix = "";
 static FILE* verbose = NULL;
 static FILE* normal  = NULL;
 static int file_given = 0; /* 1 if '-f' was given */
+static int missing_fatal = 1;
 
 static const char* struct_attrib = "";
 static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
@@ -58,6 +59,8 @@ static void show_usage(){
 	       "  -e, --header=FILE       Write optional header-file.\n"
 	       "  -p, --prefix=STRING     Prefix all targets with STRING.\n"
 	       "  -s, --srcdir=DIR        Read all files from DIR instead of current directory.\n"
+	       "  -b, --break             Break on missing files. [default]\n"
+	       "  -i, --ignore            Ignore missing files.\n"
 	       "  -v, --verbose           Enable verbose output.\n"
 	       "  -q, --quiet             Quiet mode, only returning error code.\n"
 	       "  -h, --help              This text.\n", program_name, program_name);
@@ -239,7 +242,7 @@ int main(int argc, char* argv[]){
 	verbose = fopen("/dev/stderr", "w");
 
 	int op, option_index;
-	while ( (op=getopt_long(argc, argv, "r:f:o:d:e:p:s:vqh", options, &option_index)) != -1 ){
+	while ( (op=getopt_long(argc, argv, "r:f:o:d:e:p:s:vqhbi", options, &option_index)) != -1 ){
 		switch ( op ){
 		case 0:
 			break;
@@ -301,6 +304,14 @@ int main(int argc, char* argv[]){
 
 		case 'q':
 			level = 0;
+			break;
+
+		case 'b': /* --break */
+			missing_fatal = 1;
+			break;
+
+		case 'i': /* --ignore */
+			missing_fatal = 0;
 			break;
 
 		case 'h':
@@ -389,6 +400,13 @@ int main(int argc, char* argv[]){
 		if(S_ISLNK(st.st_mode)) {
 			tmp = realpath(e->src, NULL);
 			if(tmp == NULL) {
+				if ( missing_fatal ){
+					fprintf(stderr, "%s: failed to expand real path for lnk `%s': %s.\n", program_name, e->src, strerror(errno));
+					fclose(dst);
+					unlink(output);
+					exit(1);
+				}
+
 				fprintf(normal, "%s: failed to expand real path for lnk `%s': %s. Ignored.", program_name, e->src, strerror(errno));
 				free(e->dst);
 				e->dst = NULL; /* mark as invalid */
@@ -414,10 +432,16 @@ int main(int argc, char* argv[]){
 				continue;
 			}
 			free(tmp);
-
 		} else {
 			FILE* fp = fopen(e->src, "r");
 			if ( !fp ){
+				if ( missing_fatal ){
+					fprintf(stderr, "%s: failed to read `%s'.\n", program_name, e->src);
+					fclose(dst);
+					unlink(output);
+					exit(1);
+				}
+
 				fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
 				free(e->dst);
 				e->dst = NULL; /* mark as invalid */

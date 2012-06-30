@@ -2,7 +2,7 @@ AM_CFLAGS = -I ${top_srcdir}
 
 DATAFILES = files.dpl
 noinst_PROGRAMS = sample
-sample_LDADD = ../libdatapack.la
+sample_LDADD = ${top_builddir}/libdatapack.la
 sample_SOURCES = $(DATAFILES) main.c
 
 BUILT_SOURCES = $(DATAFILES:.dpl=.c)

@@ -25,7 +25,7 @@ static FILE* verbose = NULL;
 static FILE* normal  = NULL;
 static int file_given = 0; /* 1 if '-f' was given */
 static int missing_fatal = 1;
-
+static int log_level = 1;
 static const char* struct_attrib = "";
 static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
 
@@ -218,6 +218,13 @@ int parse_dir(const char * internal_path, const char * base_path) {
 	return 0;
 }
 
+static void reopen_output(){
+	fclose(verbose);
+	fclose(normal);
+	verbose = fopen(log_level >= 2 ? "/dev/stderr" : "/dev/null", "w");
+	normal  = fopen(log_level >= 1 ? "/dev/stderr" : "/dev/null", "w");
+}
+
 int main(int argc, char* argv[]){
 	/* extract program name from path. e.g. /path/to/MArCd -> MArCd */
 	const char* separator = strrchr(argv[0], '/');
@@ -227,19 +234,19 @@ int main(int argc, char* argv[]){
 		program_name = argv[0];
 	}
 
-	int level = 1;
 	const char* output = "/dev/stdout";
 	const char* deps = NULL;
 	const char* header = NULL;
 	const char* srcdir = ".";
 
+	/* initial output */
+	verbose = fopen("/dev/null",   "w");
+	normal  = fopen("/dev/stderr", "w");
+
 	/* init entry table */
 	max_entries = 256;
 	entries = malloc(sizeof(void*)*max_entries);
 	memset(entries, 0, sizeof(void*)*max_entries);
-
-	normal  = fopen("/dev/stderr", "w");
-	verbose = fopen("/dev/stderr", "w");
 
 	int op, option_index;
 	while ( (op=getopt_long(argc, argv, "r:f:o:d:e:p:s:vqhbi", options, &option_index)) != -1 ){
@@ -260,7 +267,7 @@ int main(int argc, char* argv[]){
 		{
 			FILE* fp = strcmp(optarg, "-") != 0 ? fopen(optarg, "r") : stdin;
 			if ( !fp ){
-				if ( level >= 1 ) fprintf(stderr, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
+				fprintf(normal, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
 				exit(1);
 			}
 			char* line = NULL;
@@ -269,7 +276,7 @@ int main(int argc, char* argv[]){
 				add_entry(line);
 			}
 			if ( ferror(fp) ){
-				if ( level >= 1 ) fprintf(stderr, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
+				fprintf(normal, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
 				exit(1);
 			}
 			free(line);
@@ -299,11 +306,13 @@ int main(int argc, char* argv[]){
 			break;
 
 		case 'v':
-			level = 2;
+			log_level = 2;
+			reopen_output();
 			break;
 
 		case 'q':
-			level = 0;
+			log_level = 0;
+			reopen_output();
 			break;
 
 		case 'b': /* --break */
@@ -326,8 +335,6 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
-	verbose = fopen(level >= 2 ? "/dev/stderr" : "/dev/null", "w");
-	normal  = fopen(level >= 1 ? "/dev/stderr" : "/dev/null", "w");
 	FILE* dst = fopen(output, "w");
 	if ( !dst ){
 		fprintf(stderr, "%s: failed to open `%s' for writing: %s\n", program_name, output, strerror(errno));

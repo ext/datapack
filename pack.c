@@ -79,6 +79,16 @@ static size_t num_entries = 0;
 static size_t max_entries = 0;
 static struct entry* entries = NULL;
 
+static char* strip(char* str){
+	char* end = str + strlen(str) - 1; /* pointer to last char */
+
+	while ( str <= end && isspace(*str) ) str++;
+	while ( end >= str && isspace(*end) ) end--;
+	*(end+1) = 0;
+
+	return str;
+}
+
 static int add_entry(char* str){
 	if ( num_entries+1 == max_entries ){
 		max_entries += 256;
@@ -86,10 +96,12 @@ static int add_entry(char* str){
 		memset(entries+num_entries, 0, sizeof(void*)*(max_entries-num_entries));
 	}
 
-	/* remove trailing newline */
-	const size_t len = strlen(str);
-	if ( str[len-1] == '\n' ){
-		str[len-1] = 0;
+	/* strip leading and trailing whitespace (including newline) */
+	str = strip(str);
+
+	/* ignore empty lines and comments */
+	if ( strlen(str) == 0 || str[0] == '#' ){
+		return 1;
 	}
 
 	char* vname = str;

@@ -49,7 +49,7 @@ FILE* unpack_open(const char* filename, const char* mode);
  */
 int unpack_override(const char* dir);
 
-#ifdef _cplusplus
+#ifdef __cplusplus
 }
 #endif
 

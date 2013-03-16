@@ -150,8 +150,7 @@ int parse_dir(const char * internal_path, const char * base_path) {
 	struct dirent * entry = NULL;
 
 	while( ( entry = readdir(dir)) != NULL) {
-		if(strcmp(entry->d_name, ".") == 0) continue;
-		if(strcmp(entry->d_name, "..") == 0) continue;
+		if(entry->d_name[0] == '.') continue; //Ignore hidden files and .., .
 
 		char * internal;
 		char * var_name;

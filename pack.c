@@ -10,6 +10,7 @@
 #include <libgen.h>
 #include <errno.h>
 #include <ctype.h>
+#include <dirent.h>
 #include "datapack.h"
 
 #define CHUNK 16384
@@ -25,6 +26,7 @@ static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
 
 static struct option options[] = {
 	{"from-file", required_argument, 0, 'f'},
+	{"from-dir",	required_argument, 0, 'r'},
 	{"output",    required_argument, 0, 'o'},
 	{"deps",      required_argument, 0, 'd'},
 	{"header",    required_argument, 0, 'e'},
@@ -46,6 +48,7 @@ static void show_usage(){
 	       "\n"
 	       "Options:\n"
 	       "  -f, --from-file=FILE    Read list from file (same format, one entry per line).\n"
+	       "  -r, --from-dir=DIR			Use everything in directory.\n"
 	       "  -o, --output=FILE       Write output to file instead of stdout.\n"
 	       "  -d, --deps=FILE         Write optional Makefile dependency list.\n"
 	       "  -e, --header=FILE       Write optional header-file.\n"
@@ -126,6 +129,78 @@ static void add_entry(char* str){
 	num_entries++;
 }
 
+int parse_dir(const char * internal_path, const char * base_path) {
+
+	char * path = NULL;
+	if(asprintf(&path, "%s/%s", base_path, internal_path) == -1) {
+		fprintf(verbose, "%s: asprintf returned -1\n", program_name);
+		return 1;
+	}
+
+
+	DIR * dir = opendir(path);
+	free(path);
+	if ( !dir ){
+		fprintf(verbose, "%s: failed to read directory `%s': %s.\n", program_name, optarg, strerror(errno));
+		return 1;
+	}
+
+	char * line = NULL;
+
+	struct dirent * entry = NULL;
+
+	while( ( entry = readdir(dir)) != NULL) {
+		if(strcmp(entry->d_name, ".") == 0) continue;
+		if(strcmp(entry->d_name, "..") == 0) continue;
+
+		char * internal;
+		char * var_name;
+
+		if(asprintf(&internal, "%s/%s", internal_path, entry->d_name) == -1) {
+			fprintf(verbose, "%s: asprintf returned -1\n", program_name);
+			return 1;
+		}
+
+		var_name = (char*) malloc(sizeof(char) * (strlen(internal) + 1));
+		memcpy(var_name, internal,sizeof(char) * (strlen(internal) + 1));
+
+		for(int i=0; i<strlen(var_name); ++i) {
+			if(!isalnum(var_name[i]) && var_name[i] != '_') {
+				var_name[i] = '_';
+			}
+		}
+
+		switch(entry->d_type) {
+			//case DT_LNK: TODO
+			case DT_REG:
+				{
+					if(asprintf(&line, "%s:%s:%s", var_name, internal, internal) == -1) {
+						fprintf(verbose, "%s: asprintf returned -1\n", program_name);
+						return 1;
+					}
+					add_entry(line);
+					free(line);
+				}
+				break;
+			case DT_DIR:
+				{
+					if(parse_dir(internal, base_path)) {
+						free(internal);
+						free(var_name);
+						return 1;
+					}
+				}
+			break;
+		}
+		free(internal);
+		free(var_name);
+	}
+
+	closedir(dir);
+	return 0;
+}
+
+
 int main(int argc, char* argv[]){
 	/* extract program name from path. e.g. /path/to/MArCd -> MArCd */
 	const char* separator = strrchr(argv[0], '/');
@@ -146,8 +221,11 @@ int main(int argc, char* argv[]){
 	entries = malloc(sizeof(void*)*max_entries);
 	memset(entries, 0, sizeof(void*)*max_entries);
 
+	normal  = fopen("/dev/stderr", "w");
+	verbose = fopen("/dev/stderr", "w");
+
 	int op, option_index;
-	while ( (op=getopt_long(argc, argv, "f:o:d:e:p:s:vqh", options, &option_index)) != -1 ){
+	while ( (op=getopt_long(argc, argv, "r:f:o:d:e:p:s:vqh", options, &option_index)) != -1 ){
 		switch ( op ){
 		case 0:
 			break;
@@ -155,6 +233,12 @@ int main(int argc, char* argv[]){
 		case '?':
 			exit(1);
 
+		case 'r':
+			srcdir = optarg;
+			if(parse_dir("", optarg)) {
+				exit(-1); 
+			}
+			break;
 		case 'f':
 		{
 			FILE* fp = strcmp(optarg, "-") != 0 ? fopen(optarg, "r") : stdin;

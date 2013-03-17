@@ -180,7 +180,6 @@ int parse_dir(const char * internal_path, const char * base_path) {
 		return 1;
 	}
 
-
 	DIR * dir = opendir(path);
 	free(path);
 	if ( !dir ){
@@ -245,111 +244,123 @@ static void write_prelude(FILE* dst){
 	fprintf(dst, "#include \"datapack.h\"\n\n");
 }
 
+static int write_symlink(FILE* dst, struct entry* e){
+	char* tmp = realpath(e->src, NULL);
+	if(tmp == NULL) {
+		fprintf(normal, "%s: failed to expand real path for lnk `%s': %s. Ignored.", program_name, e->src, strerror(errno));
+		return 1;
+	}
+
+	struct stat st;
+	lstat(tmp, &st);
+
+	if(S_ISDIR(st.st_mode)) {
+		fprintf(normal, "%s: target for lnk `%s'->`%s' is a directory, ignored\n", program_name, e->src, tmp);
+		free(tmp);
+		return 1;
+	}
+
+	e->lnk = find_entry(tmp);
+	free(tmp);
+
+	if(e->lnk == NULL) {
+		fprintf(normal, "%s: failed to read target `%s' for lnk `%s', ignored.\n", program_name, tmp, e->src);
+		return 1;
+	}
+
+	return 0;
+}
+
+static int write_regular(FILE* dst, struct entry* e){
+	FILE* fp = fopen(e->src, "r");
+	if ( !fp ){
+		if ( missing_fatal ){
+			fprintf(stderr, "%s: failed to read `%s'.\n", program_name, e->src);
+			return 1;
+		}
+
+		fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
+		return 1;
+	}
+
+	fprintf(dst, "static const char %s_buf[] %s = \"", e->variable, data_attrib);
+
+	z_stream strm;
+	int flush;
+
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;
+
+	int ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
+	if (ret != Z_OK){
+		fclose(fp);
+		return 1;
+	}
+
+	size_t bytes_r = 0;
+	size_t bytes = 0;
+	do {
+		strm.avail_in = (unsigned int) fread(in, 1, CHUNK, fp);
+		bytes_r += strm.avail_in;
+		if (ferror(fp)) {
+			deflateEnd(&strm);
+			return 1;
+		}
+		flush = feof(fp) ? Z_FINISH : Z_NO_FLUSH;
+		strm.next_in = in;
+
+		do {
+			strm.avail_out = CHUNK;
+			strm.next_out = out;
+			deflate(&strm, flush);
+
+			unsigned int have = CHUNK - strm.avail_out;
+			for ( int i = 0; i < have; i++ ){
+				fprintf(dst, "\\x%02X", out[i]);
+				bytes++;
+			}
+
+		} while (strm.avail_out == 0);
+	} while (flush != Z_FINISH);
+
+	fprintf(dst, "\";\n");
+	e->in = bytes;
+	e->out = bytes_r;
+
+	deflateEnd(&strm);
+	fclose(fp);
+	return 0;
+}
+
 static int write_binary(FILE* dst){
 	int files = 0;
+
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		char * tmp;
 		fprintf(verbose, "Processing %s from `%s' to `%s'\n", e->variable, e->src, e->dst);
 
 		struct stat st;
 		lstat(e->src, &st);
 
-		if(S_ISLNK(st.st_mode)) {
-			tmp = realpath(e->src, NULL);
-			if(tmp == NULL) {
-				if ( missing_fatal ){
-					fprintf(stderr, "%s: failed to expand real path for lnk `%s': %s.\n", program_name, e->src, strerror(errno));
-					return -1;
-				}
-
-				fprintf(normal, "%s: failed to expand real path for lnk `%s': %s. Ignored.", program_name, e->src, strerror(errno));
-				free(e->dst);
-				e->dst = NULL; /* mark as invalid */
-				continue;
-			}
-
-			lstat(tmp, &st);
-
-			if(S_ISDIR(st.st_mode)) {
-				fprintf(normal, "%s: target for lnk `%s'->`%s' is a directory, ignored\n", program_name, e->src, tmp);
-				free(e->dst);
-				free(tmp);
-				e->dst = NULL; /* mark as invalid */
-				continue;
-			}
-
-			e->lnk = find_entry(tmp);
-			if(e->lnk == NULL) {
-				fprintf(normal, "%s: failed to read target `%s' for lnk `%s', ignored.\n", program_name, tmp, e->src);
-				free(e->dst);
-				free(tmp);
-				e->dst = NULL; /* mark as invalid */
-				continue;
-			}
-			free(tmp);
+		int ret;
+		if ( S_ISLNK(st.st_mode) ) {
+			ret = write_symlink(dst, e);
 		} else {
-			FILE* fp = fopen(e->src, "r");
-			if ( !fp ){
-				if ( missing_fatal ){
-					fprintf(stderr, "%s: failed to read `%s'.\n", program_name, e->src);
-					return -1;
-				}
-
-				fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
-				free(e->dst);
-				e->dst = NULL; /* mark as invalid */
-				continue;
+			ret = write_regular(dst, e);
+			if ( ret == 0 ){
+				files++;
 			}
-
-			fprintf(dst, "static const char %s_buf[] %s = \"", e->variable, data_attrib);
-
-			z_stream strm;
-			int flush;
-
-			strm.zalloc = Z_NULL;
-			strm.zfree = Z_NULL;
-			strm.opaque = Z_NULL;
-
-			int ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
-			if (ret != Z_OK)
-				return -1;
-
-			size_t bytes_r = 0;
-			size_t bytes = 0;
-			do {
-				strm.avail_in = (unsigned int) fread(in, 1, CHUNK, fp);
-				bytes_r += strm.avail_in;
-				if (ferror(fp)) {
-					deflateEnd(&strm);
-					return -1;
-				}
-				flush = feof(fp) ? Z_FINISH : Z_NO_FLUSH;
-				strm.next_in = in;
-
-				do {
-					strm.avail_out = CHUNK;
-					strm.next_out = out;
-					deflate(&strm, flush);
-
-					unsigned int have = CHUNK - strm.avail_out;
-					for ( int i = 0; i < have; i++ ){
-						fprintf(dst, "\\x%02X", out[i]);
-						bytes++;
-					}
-
-				} while (strm.avail_out == 0);
-			} while (flush != Z_FINISH);
-
-			fprintf(dst, "\";\n");
-			e->in = bytes;
-			e->out = bytes_r;
-
-			deflateEnd(&strm);
-			fclose(fp);
 		}
 
-		files++;
+		if ( ret != 0 ){
+			free(e->dst);
+			e->dst = NULL; /* mark as invalid */
+			if ( missing_fatal ){
+				return -1;
+			}
+		}
 	}
+
 	fprintf(dst, "\n");
 	return files;
 }

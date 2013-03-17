@@ -11,6 +11,9 @@
 #include <errno.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include "datapack.h"
 
 #define CHUNK 16384
@@ -65,6 +68,7 @@ struct entry {
 	char* src;
 	size_t in;
 	size_t out;
+	struct entry * lnk; /* Pointer to a entry that this is a lnk to, or NULL */
 };
 
 static size_t num_entries = 0;
@@ -126,7 +130,19 @@ static void add_entry(char* str){
 	e->src = strdup(sname);
 	e->in  = 0;
 	e->out = 0;
+	e->lnk = NULL;
 	num_entries++;
+}
+
+static struct entry * find_entry(const char * path) {
+	char buffer[PATH_MAX];
+	for(int i = 0; i < num_entries; ++i) {
+		char * ret = realpath(entries[i].src, buffer);
+		if(ret != NULL && strcmp(buffer, path) == 0) {
+			return entries + i;
+		}
+	}
+	return NULL;
 }
 
 int parse_dir(const char * internal_path, const char * base_path) {
@@ -160,8 +176,7 @@ int parse_dir(const char * internal_path, const char * base_path) {
 			return 1;
 		}
 
-		var_name = (char*) malloc(sizeof(char) * (strlen(internal) + 1));
-		memcpy(var_name, internal,sizeof(char) * (strlen(internal) + 1));
+		var_name = strdup(internal);
 
 		for(int i=0; i<strlen(var_name); ++i) {
 			if(!isalnum(var_name[i]) && var_name[i] != '_') {
@@ -170,7 +185,7 @@ int parse_dir(const char * internal_path, const char * base_path) {
 		}
 
 		switch(entry->d_type) {
-			//case DT_LNK: TODO
+			case DT_LNK:
 			case DT_REG:
 				{
 					if(asprintf(&line, "%s:%s:%s", var_name, internal, internal) == -1) {
@@ -198,7 +213,6 @@ int parse_dir(const char * internal_path, const char * base_path) {
 	closedir(dir);
 	return 0;
 }
-
 
 int main(int argc, char* argv[]){
 	/* extract program name from path. e.g. /path/to/MArCd -> MArCd */
@@ -357,54 +371,90 @@ int main(int argc, char* argv[]){
 	/* output binary data */
 	int files = 0;
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		char * tmp;
 		fprintf(verbose, "Processing %s from `%s' to `%s'\n", e->variable, e->src, e->dst);
 
-		FILE* fp = fopen(e->src, "r");
-		if ( !fp ){
-			fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
-			free(e->dst);
-			e->dst = NULL; /* mark as invalid */
-			continue;
+		struct stat st;
+		lstat(e->src, &st);
+
+		if(S_ISLNK(st.st_mode)) {
+			tmp = realpath(e->src, NULL);
+			if(tmp == NULL) {
+				fprintf(normal, "%s: failed to expand real path for lnk `%s': %s. Ignored.", program_name, e->src, strerror(errno));
+				free(e->dst);
+				e->dst = NULL; /* mark as invalid */
+				continue;
+			}
+
+			lstat(tmp, &st);
+
+			if(S_ISDIR(st.st_mode)) {
+				fprintf(normal, "%s: target for lnk `%s'->`%s' is a directory, ignored\n", program_name, e->src, tmp);
+				free(e->dst);
+				free(tmp);
+				e->dst = NULL; /* mark as invalid */
+				continue;
+			}
+
+			e->lnk = find_entry(tmp);
+			if(e->lnk == NULL) {
+				fprintf(normal, "%s: failed to read target `%s' for lnk `%s', ignored.\n", program_name, tmp, e->src);
+				free(e->dst);
+				free(tmp);
+				e->dst = NULL; /* mark as invalid */
+				continue;
+			}
+			free(tmp);
+
+		} else {
+			FILE* fp = fopen(e->src, "r");
+			if ( !fp ){
+				fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
+				free(e->dst);
+				e->dst = NULL; /* mark as invalid */
+				continue;
+			}
+
+			fprintf(dst, "static const char %s_buf[] %s = \"", e->variable, data_attrib);
+
+			ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
+			if (ret != Z_OK)
+				return ret;
+
+			size_t bytes_r = 0;
+			size_t bytes = 0;
+			do {
+				strm.avail_in = (unsigned int) fread(in, 1, CHUNK, fp);
+				bytes_r += strm.avail_in;
+				if (ferror(fp)) {
+					deflateEnd(&strm);
+					return Z_ERRNO;
+				}
+				flush = feof(fp) ? Z_FINISH : Z_NO_FLUSH;
+				strm.next_in = in;
+
+				do {
+					strm.avail_out = CHUNK;
+					strm.next_out = out;
+					deflate(&strm, flush);
+
+					unsigned int have = CHUNK - strm.avail_out;
+					for ( int i = 0; i < have; i++ ){
+						fprintf(dst, "\\x%02X", out[i]);
+						bytes++;
+					}
+
+				} while (strm.avail_out == 0);
+			} while (flush != Z_FINISH);
+
+			fprintf(dst, "\";\n");
+			e->in = bytes;
+			e->out = bytes_r;
+
+			deflateEnd(&strm);
+			fclose(fp);
 		}
 
-		fprintf(dst, "static const char %s_buf[] %s = \"", e->variable, data_attrib);
-
-		ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
-		if (ret != Z_OK)
-			return ret;
-
-		size_t bytes_r = 0;
-		size_t bytes = 0;
-		do {
-			strm.avail_in = fread(in, 1, CHUNK, fp);
-			bytes_r += strm.avail_in;
-			if (ferror(fp)) {
-				deflateEnd(&strm);
-				return Z_ERRNO;
-			}
-			flush = feof(fp) ? Z_FINISH : Z_NO_FLUSH;
-			strm.next_in = in;
-
-			do {
-				strm.avail_out = CHUNK;
-				strm.next_out = out;
-				deflate(&strm, flush);
-
-				unsigned int have = CHUNK - strm.avail_out;
-				for ( int i = 0; i < have; i++ ){
-					fprintf(dst, "\\x%02X", out[i]);
-					bytes++;
-				}
-
-			} while (strm.avail_out == 0);
-		} while (flush != Z_FINISH);
-
-		fprintf(dst, "\";\n");
-		e->in = bytes;
-		e->out = bytes_r;
-
-		deflateEnd(&strm);
-		fclose(fp);
 		files++;
 	}
 	fprintf(dst, "\n");
@@ -412,8 +462,10 @@ int main(int argc, char* argv[]){
 	/* output entries */
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
 		if ( !e->dst ) continue;
+		struct entry * real = e;
+		if(e->lnk != NULL) real = e->lnk;
 		fprintf(dst, "struct datapack_file_entry %s %s = {\"%s\", %s_buf, %zd, %zd};\n",
-		        e->variable, struct_attrib, e->dst, e->variable, e->in, e->out);
+		        e->variable, struct_attrib, e->dst, real->variable, real->in, real->out);
 	};
 	fprintf(dst, "\n");
 

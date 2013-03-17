@@ -29,6 +29,11 @@ int unpack(const struct datapack_file_entry* src, char** dst);
 int unpack_filename(const char* filename, char** dst);
 
 /**
+ * Find a file using path
+ */
+struct datapack_file_entry* unpack_find(const char* filename);
+
+/**
  * Open packed file as stream.
  *
  * For writing to work override must be enabled and user must have write

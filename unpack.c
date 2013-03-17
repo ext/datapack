@@ -87,7 +87,7 @@ int unpack(const struct datapack_file_entry* src, char** dstptr){
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
-static struct datapack_file_entry* unpack_find(const char* filename){
+struct datapack_file_entry* unpack_find(const char* filename){
 	extern struct datapack_file_entry* filetable[];
 	struct datapack_file_entry* cur = filetable[0];
 

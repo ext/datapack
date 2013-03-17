@@ -316,6 +316,10 @@ int main(int argc, char* argv[]){
 	verbose = fopen(level >= 2 ? "/dev/stderr" : "/dev/null", "w");
 	normal  = fopen(level >= 1 ? "/dev/stderr" : "/dev/null", "w");
 	FILE* dst = fopen(output, "w");
+	if ( !dst ){
+		fprintf(stderr, "%s: failed to open `%s' for writing: %s\n", program_name, output, strerror(errno));
+		return 1;
+	}
 
 	int ret;
 	z_stream strm;

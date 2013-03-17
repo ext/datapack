@@ -1,5 +1,5 @@
 ACLOCAL_AMFLAGS = -I m4
-AM_CFLAGS = -Wall -I ${top_srcdir}
+AM_CFLAGS = -Wall -Wvla -Wconversion -I ${top_srcdir}
 
 bin_PROGRAMS = datapacker
 noinst_PROGRAMS = sample

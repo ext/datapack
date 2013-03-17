@@ -40,8 +40,8 @@ int unpack(const struct datapack_file_entry* src, char** dstptr){
 			const long size = ftell(fp);
 			fseek(fp, 0, SEEK_SET);
 
-			char* dst = malloc(size+1); /* must fit null-terminator */
-			if ( fread(dst, size, 1, fp) == 0 ){
+			char* dst = (char*) malloc((size_t)(size+1)); /* must fit null-terminator */
+			if ( fread(dst, (size_t)size, 1, fp) == 0 ){
 				return errno;
 			}
 
@@ -55,19 +55,19 @@ int unpack(const struct datapack_file_entry* src, char** dstptr){
 
 	*dstptr = NULL;
 	const size_t bufsize = src->out_bytes;
-	char* dst = malloc(bufsize+1); /* must fit null-terminator */
+	char* dst = (char*) malloc(bufsize+1); /* must fit null-terminator */
 
 	z_stream strm;
 	strm.zalloc = Z_NULL;
 	strm.zfree = Z_NULL;
 	strm.opaque = Z_NULL;
-	strm.avail_in = src->in_bytes;
-	strm.next_in = (void*)src->data;
+	strm.avail_in = (unsigned int) src->in_bytes;
+	strm.next_in = (Bytef*)src->data;
 	int ret = inflateInit(&strm);
 	if (ret != Z_OK)
 		return ret;
 
-	strm.avail_out = bufsize;
+	strm.avail_out = (unsigned int) bufsize;
 	strm.next_out = (unsigned char*)dst;
 	ret = inflate(&strm, Z_NO_FLUSH);
 	switch (ret) {
@@ -151,7 +151,7 @@ static ssize_t unpack_read(void* cookie, char* buf, size_t size){
 	const size_t left = CHUNK - ctx->bufsize;
 
 	if ( ctx->strm.avail_in > 0 ){
-		ctx->strm.avail_out = left;
+		ctx->strm.avail_out = (unsigned int) left;
 		ctx->strm.next_out  = &ctx->buffer[ctx->bufsize];
 
 		int ret = inflate(&ctx->strm, Z_NO_FLUSH);
@@ -173,7 +173,7 @@ static ssize_t unpack_read(void* cookie, char* buf, size_t size){
 	memmove(ctx->buffer, &ctx->buffer[size], bytes);
 	ctx->bufsize -= bytes;
 
-	return bytes;
+	return (ssize_t) bytes;
 }
 
 static int unpack_close(void *cookie){
@@ -205,7 +205,7 @@ FILE* unpack_open(const char* filename, const char* mode){
 	/* allow overriding with local path */
 	if ( read && local ){
 		char* local_path;
-		asprintf(&local_path, "%s/%s", local, filename);
+		if(asprintf(&local_path, "%s/%s", local, filename) == -1) return NULL;
 		FILE* fp = fopen(local_path, mode);
 		free(local_path);
 		if ( fp ){
@@ -225,18 +225,18 @@ FILE* unpack_open(const char* filename, const char* mode){
 
 		/* give file pointer directly from fopen */
 		char* local_path;
-		asprintf(&local_path, "%s/%s", local, filename);
+		if(asprintf(&local_path, "%s/%s", local, filename) == -1) return NULL;
 		FILE* fp = fopen(local_path, mode);
 		free(local_path);
 
 		return fp;
 	}
 
-	struct unpack_cookie_data* ctx = malloc(sizeof(struct unpack_cookie_data));
+	struct unpack_cookie_data* ctx = (struct unpack_cookie_data*)malloc(sizeof(struct unpack_cookie_data));
 	ctx->src = entry;
 	ctx->bufsize = 0;
 
-	ctx->strm.avail_in = entry->in_bytes;
+	ctx->strm.avail_in = (unsigned int) entry->in_bytes;
 	ctx->strm.next_in = (unsigned char*)entry->data;
 	ctx->strm.zalloc = Z_NULL;
 	ctx->strm.zfree = Z_NULL;

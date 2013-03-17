@@ -180,7 +180,6 @@ int parse_dir(const char * internal_path, const char * base_path) {
 		return 1;
 	}
 
-
 	DIR * dir = opendir(path);
 	free(path);
 	if ( !dir ){
@@ -241,6 +240,192 @@ int parse_dir(const char * internal_path, const char * base_path) {
 	return 0;
 }
 
+static void write_prelude(FILE* dst){
+	fprintf(dst, "#include \"datapack.h\"\n\n");
+}
+
+static int write_symlink(FILE* dst, struct entry* e){
+	char* tmp = realpath(e->src, NULL);
+	if(tmp == NULL) {
+		fprintf(normal, "%s: failed to expand real path for lnk `%s': %s. Ignored.", program_name, e->src, strerror(errno));
+		return 1;
+	}
+
+	struct stat st;
+	lstat(tmp, &st);
+
+	if(S_ISDIR(st.st_mode)) {
+		fprintf(normal, "%s: target for lnk `%s'->`%s' is a directory, ignored\n", program_name, e->src, tmp);
+		free(tmp);
+		return 1;
+	}
+
+	e->lnk = find_entry(tmp);
+	free(tmp);
+
+	if(e->lnk == NULL) {
+		fprintf(normal, "%s: failed to read target `%s' for lnk `%s', ignored.\n", program_name, tmp, e->src);
+		return 1;
+	}
+
+	return 0;
+}
+
+static int write_regular(FILE* dst, struct entry* e){
+	FILE* fp = fopen(e->src, "r");
+	if ( !fp ){
+		if ( missing_fatal ){
+			fprintf(stderr, "%s: failed to read `%s'.\n", program_name, e->src);
+			return 1;
+		}
+
+		fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
+		return 1;
+	}
+
+	fprintf(dst, "static const char %s_buf[] %s = \"", e->variable, data_attrib);
+
+	z_stream strm;
+	int flush;
+
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;
+
+	int ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
+	if (ret != Z_OK){
+		fclose(fp);
+		return 1;
+	}
+
+	size_t bytes_r = 0;
+	size_t bytes = 0;
+	do {
+		strm.avail_in = (unsigned int) fread(in, 1, CHUNK, fp);
+		bytes_r += strm.avail_in;
+		if (ferror(fp)) {
+			deflateEnd(&strm);
+			return 1;
+		}
+		flush = feof(fp) ? Z_FINISH : Z_NO_FLUSH;
+		strm.next_in = in;
+
+		do {
+			strm.avail_out = CHUNK;
+			strm.next_out = out;
+			deflate(&strm, flush);
+
+			unsigned int have = CHUNK - strm.avail_out;
+			for ( int i = 0; i < have; i++ ){
+				fprintf(dst, "\\x%02X", out[i]);
+				bytes++;
+			}
+
+		} while (strm.avail_out == 0);
+	} while (flush != Z_FINISH);
+
+	fprintf(dst, "\";\n");
+	e->in = bytes;
+	e->out = bytes_r;
+
+	deflateEnd(&strm);
+	fclose(fp);
+	return 0;
+}
+
+static int write_binary(FILE* dst){
+	int files = 0;
+
+	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		fprintf(verbose, "Processing %s from `%s' to `%s'\n", e->variable, e->src, e->dst);
+
+		struct stat st;
+		lstat(e->src, &st);
+
+		int ret;
+		if ( S_ISLNK(st.st_mode) ) {
+			ret = write_symlink(dst, e);
+		} else {
+			ret = write_regular(dst, e);
+			if ( ret == 0 ){
+				files++;
+			}
+		}
+
+		if ( ret != 0 ){
+			free(e->dst);
+			e->dst = NULL; /* mark as invalid */
+			if ( missing_fatal ){
+				return -1;
+			}
+		}
+	}
+
+	fprintf(dst, "\n");
+	return files;
+}
+
+static void write_entries(FILE* dst){
+	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		if ( !e->dst ) continue;
+		struct entry * real = e;
+		if(e->lnk != NULL) real = e->lnk;
+		fprintf(dst, "struct datapack_file_entry %s %s = {\"%s\", %s_buf, %zd, %zd};\n",
+		        e->variable, struct_attrib, e->dst, real->variable, real->in, real->out);
+	};
+	fprintf(dst, "\n");
+}
+
+static void write_dependencies(const char* filename, const char* output){
+	if ( !filename ) return;
+
+	fprintf(verbose, "%s: writing Makefile dependencies to `%s'\n", program_name, filename);
+	FILE* fp = fopen(filename, "w");
+	if ( !fp ){
+		fprintf(normal, "%s: failed to write Makefile dependencies to `%s': %s\n", program_name, filename, strerror(errno));
+	} else {
+		fprintf(fp, "%s: \\\n", output);
+		for ( struct entry* e = &entries[0]; e->src; e++ ){
+			if ( !e->dst ) continue;
+			fprintf(fp, "\t%s %s\n", e->src, (e+1)->src ? "\\" : "");
+		}
+		fprintf(fp, "\n");
+		fclose(fp);
+	}
+}
+
+static void write_header(const char* filename){
+	if ( !filename ) return;
+
+	fprintf(verbose, "%s: writing file header to `%s'\n", program_name, filename);
+	FILE* fp = fopen(filename, "w");
+	if ( !fp ){
+		fprintf(normal, "%s: failed to write header to `%s': %s\n", program_name, filename, strerror(errno));
+	} else {
+		fprintf(fp, "#ifndef DATAPACKER_FILES_H\n#define DATAPACKER_FILES_H\n\n#include \"datapack.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n");
+		for ( struct entry* e = &entries[0]; e->src; e++ ){
+			if ( !e->dst ) continue;
+			fprintf(fp, "extern struct datapack_file_entry %s;\n", e->variable);
+		}
+		fprintf(fp, "\n#ifdef __cplusplus\n}\n#endif\n\n#endif /* DATAPACKER_FILES_H */\n");
+		fclose(fp);
+	}
+}
+
+static void write_table(FILE* dst){
+	fprintf(dst, "struct datapack_file_entry* filetable[] = {\n");
+	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		if ( e->dst ){
+			fprintf(dst, "\t&%s,\n", e->variable);
+		}
+		free(e->dst);
+		free(e->src);
+		e->dst = NULL;
+		e->src = NULL;
+	}
+	fprintf(dst, "\tNULL\n};\n\n");
+}
+
 static void reopen_output(){
 	fclose(verbose);
 	fclose(normal);
@@ -286,6 +471,7 @@ int main(int argc, char* argv[]){
 				exit(-1);
 			}
 			break;
+
 		case 'f':
 		{
 			FILE* fp = strcmp(optarg, "-") != 0 ? fopen(optarg, "r") : stdin;
@@ -366,14 +552,6 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
-	int ret;
-	z_stream strm;
-	int flush;
-
-	strm.zalloc = Z_NULL;
-	strm.zfree = Z_NULL;
-	strm.opaque = Z_NULL;
-
 	/* read entries from arguments */
 	for ( int i = optind; i < argc; i++ ){
 		char* line = argv[i];
@@ -420,178 +598,28 @@ int main(int argc, char* argv[]){
 		free(tmp);
 	}
 
-	/* output header */
-	fprintf(dst, "#include \"datapack.h\"\n\n");
+	int ret = 0;
+	int files;
 
-	/* output binary data */
-	int files = 0;
-	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		char * tmp;
-		fprintf(verbose, "Processing %s from `%s' to `%s'\n", e->variable, e->src, e->dst);
-
-		struct stat st;
-		lstat(e->src, &st);
-
-		if(S_ISLNK(st.st_mode)) {
-			tmp = realpath(e->src, NULL);
-			if(tmp == NULL) {
-				if ( missing_fatal ){
-					fprintf(stderr, "%s: failed to expand real path for lnk `%s': %s.\n", program_name, e->src, strerror(errno));
-					fclose(dst);
-					unlink(output);
-					exit(1);
-				}
-
-				fprintf(normal, "%s: failed to expand real path for lnk `%s': %s. Ignored.", program_name, e->src, strerror(errno));
-				free(e->dst);
-				e->dst = NULL; /* mark as invalid */
-				continue;
-			}
-
-			lstat(tmp, &st);
-
-			if(S_ISDIR(st.st_mode)) {
-				fprintf(normal, "%s: target for lnk `%s'->`%s' is a directory, ignored\n", program_name, e->src, tmp);
-				free(e->dst);
-				free(tmp);
-				e->dst = NULL; /* mark as invalid */
-				continue;
-			}
-
-			e->lnk = find_entry(tmp);
-			if(e->lnk == NULL) {
-				fprintf(normal, "%s: failed to read target `%s' for lnk `%s', ignored.\n", program_name, tmp, e->src);
-				free(e->dst);
-				free(tmp);
-				e->dst = NULL; /* mark as invalid */
-				continue;
-			}
-			free(tmp);
-		} else {
-			FILE* fp = fopen(e->src, "r");
-			if ( !fp ){
-				if ( missing_fatal ){
-					fprintf(stderr, "%s: failed to read `%s'.\n", program_name, e->src);
-					fclose(dst);
-					unlink(output);
-					exit(1);
-				}
-
-				fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
-				free(e->dst);
-				e->dst = NULL; /* mark as invalid */
-				continue;
-			}
-
-			fprintf(dst, "static const char %s_buf[] %s = \"", e->variable, data_attrib);
-
-			ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
-			if (ret != Z_OK)
-				return ret;
-
-			size_t bytes_r = 0;
-			size_t bytes = 0;
-			do {
-				strm.avail_in = (unsigned int) fread(in, 1, CHUNK, fp);
-				bytes_r += strm.avail_in;
-				if (ferror(fp)) {
-					deflateEnd(&strm);
-					return Z_ERRNO;
-				}
-				flush = feof(fp) ? Z_FINISH : Z_NO_FLUSH;
-				strm.next_in = in;
-
-				do {
-					strm.avail_out = CHUNK;
-					strm.next_out = out;
-					deflate(&strm, flush);
-
-					unsigned int have = CHUNK - strm.avail_out;
-					for ( int i = 0; i < have; i++ ){
-						fprintf(dst, "\\x%02X", out[i]);
-						bytes++;
-					}
-
-				} while (strm.avail_out == 0);
-			} while (flush != Z_FINISH);
-
-			fprintf(dst, "\";\n");
-			e->in = bytes;
-			e->out = bytes_r;
-
-			deflateEnd(&strm);
-			fclose(fp);
-		}
-
-		files++;
+	write_prelude(dst);
+	if ( (files=write_binary(dst)) < 0 ){
+		unlink(output);
+		ret = 1;
+		goto fin;
 	}
-	fprintf(dst, "\n");
-
-	/* output entries */
-	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		if ( !e->dst ) continue;
-		struct entry * real = e;
-		if(e->lnk != NULL) real = e->lnk;
-		fprintf(dst, "struct datapack_file_entry %s %s = {\"%s\", %s_buf, %zd, %zd};\n",
-		        e->variable, struct_attrib, e->dst, real->variable, real->in, real->out);
-	};
-	fprintf(dst, "\n");
-
-	/* output Makefile dependencies */
-	if ( deps ){
-		fprintf(verbose, "%s: writing Makefile dependencies to `%s'\n", program_name, deps);
-		FILE* fp = fopen(deps, "w");
-		if ( !fp ){
-			fprintf(normal, "%s: failed to write Makefile dependencies to `%s': %s\n", program_name, deps, strerror(errno));
-		} else {
-			fprintf(fp, "%s: \\\n", output);
-			for ( struct entry* e = &entries[0]; e->src; e++ ){
-				if ( !e->dst ) continue;
-				fprintf(fp, "\t%s %s\n", e->src, (e+1)->src ? "\\" : "");
-			}
-			fprintf(fp, "\n");
-			fclose(fp);
-		}
-	}
-
-	/* output file header */
-	if ( header ){
-		fprintf(verbose, "%s: writing file header to `%s'\n", program_name, header);
-		FILE* fp = fopen(header, "w");
-		if ( !fp ){
-			fprintf(normal, "%s: failed to write header to `%s': %s\n", program_name, header, strerror(errno));
-		} else {
-			fprintf(fp, "#ifndef DATAPACKER_FILES_H\n#define DATAPACKER_FILES_H\n\n#include \"datapack.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n");
-			for ( struct entry* e = &entries[0]; e->src; e++ ){
-				if ( !e->dst ) continue;
-				fprintf(fp, "extern struct datapack_file_entry %s;\n", e->variable);
-			}
-			fprintf(fp, "\n#ifdef __cplusplus\n}\n#endif\n\n#endif /* DATAPACKER_FILES_H */\n");
-			fclose(fp);
-		}
-	}
-
-	/* output file table and clear files */
-	fprintf(dst, "struct datapack_file_entry* filetable[] = {\n");
-	for ( struct entry* e = &entries[0]; e->src; e++ ){
-		if ( e->dst ){
-			fprintf(dst, "\t&%s,\n", e->variable);
-		}
-		free(e->dst);
-		free(e->src);
-		e->dst = NULL;
-		e->src = NULL;
-	}
-	fprintf(dst, "\tNULL\n};\n\n");
+	write_entries(dst);
+	write_dependencies(deps, output);
+	write_header(header);
+	write_table(dst);
 
 	fprintf(verbose, "%d datafile(s) processed.\n", files);
 
+  fin:
 	fclose(dst);
 	fclose(verbose);
 	fclose(normal);
 	free((char*)srcdir);
 	free(entries);
 	entries = NULL;
-
-	return Z_OK;
+	return ret;
 }

@@ -460,6 +460,7 @@ int main(int argc, char* argv[]){
 				exit(-1);
 			}
 			break;
+
 		case 'f':
 		{
 			FILE* fp = strcmp(optarg, "-") != 0 ? fopen(optarg, "r") : stdin;

@@ -29,7 +29,7 @@ static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
 
 static struct option options[] = {
 	{"from-file", required_argument, 0, 'f'},
-	{"from-dir",	required_argument, 0, 'r'},
+	{"from-dir",  required_argument, 0, 'r'},
 	{"output",    required_argument, 0, 'o'},
 	{"deps",      required_argument, 0, 'd'},
 	{"header",    required_argument, 0, 'e'},
@@ -51,7 +51,7 @@ static void show_usage(){
 	       "\n"
 	       "Options:\n"
 	       "  -f, --from-file=FILE    Read list from file (same format, one entry per line).\n"
-	       "  -r, --from-dir=DIR			Use everything in directory.\n"
+	       "  -r, --from-dir=DIR      Use everything in directory.\n"
 	       "  -o, --output=FILE       Write output to file instead of stdout.\n"
 	       "  -d, --deps=FILE         Write optional Makefile dependency list.\n"
 	       "  -e, --header=FILE       Write optional header-file.\n"
@@ -249,7 +249,7 @@ int main(int argc, char* argv[]){
 		case 'r':
 			srcdir = optarg;
 			if(parse_dir("", optarg)) {
-				exit(-1); 
+				exit(-1);
 			}
 			break;
 		case 'f':

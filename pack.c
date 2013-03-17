@@ -23,7 +23,9 @@ static const char* program_name = NULL;
 static const char* prefix = "";
 static FILE* verbose = NULL;
 static FILE* normal  = NULL;
-
+static int file_given = 0; /* 1 if '-f' was given */
+static int missing_fatal = 1;
+static int log_level = 1;
 static const char* struct_attrib = "";
 static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
 
@@ -57,6 +59,8 @@ static void show_usage(){
 	       "  -e, --header=FILE       Write optional header-file.\n"
 	       "  -p, --prefix=STRING     Prefix all targets with STRING.\n"
 	       "  -s, --srcdir=DIR        Read all files from DIR instead of current directory.\n"
+	       "  -b, --break             Break on missing files. [default]\n"
+	       "  -i, --ignore            Ignore missing files.\n"
 	       "  -v, --verbose           Enable verbose output.\n"
 	       "  -q, --quiet             Quiet mode, only returning error code.\n"
 	       "  -h, --help              This text.\n", program_name, program_name);
@@ -75,17 +79,29 @@ static size_t num_entries = 0;
 static size_t max_entries = 0;
 static struct entry* entries = NULL;
 
-static void add_entry(char* str){
+static char* strip(char* str){
+	char* end = str + strlen(str) - 1; /* pointer to last char */
+
+	while ( str <= end && isspace(*str) ) str++;
+	while ( end >= str && isspace(*end) ) end--;
+	*(end+1) = 0;
+
+	return str;
+}
+
+static int add_entry(char* str){
 	if ( num_entries+1 == max_entries ){
 		max_entries += 256;
 		entries = realloc(entries, sizeof(void*)*max_entries);
 		memset(entries+num_entries, 0, sizeof(void*)*(max_entries-num_entries));
 	}
 
-	/* remove trailing newline */
-	const size_t len = strlen(str);
-	if ( str[len-1] == '\n' ){
-		str[len-1] = 0;
+	/* strip leading and trailing whitespace (including newline) */
+	str = strip(str);
+
+	/* ignore empty lines and comments */
+	if ( strlen(str) == 0 || str[0] == '#' ){
+		return 1;
 	}
 
 	char* vname = str;
@@ -93,8 +109,8 @@ static void add_entry(char* str){
 	/* locate filename */
 	char* delim = strchr(vname, ':');
 	if ( !delim ){
-		fprintf(normal, "%s: missing delimiter in `%s', ignored.\n", program_name, str);
-		return;
+		fprintf(normal, "%s: missing delimiter in `%s'.\n", program_name, str);
+		return 0;
 	}
 	*delim = 0;
 	char* sname = delim+1;
@@ -113,13 +129,22 @@ static void add_entry(char* str){
 
 	/* sanity check */
 	if ( strlen(vname) >= 64 ){
-		fprintf(normal, "%s: variable name `%s' too long (max: 63, current: %zd), ignored\n", program_name, vname, strlen(vname));
-		return;
+		fprintf(normal, "%s: variable name `%s' too long (max: 63, current: %zd)\n", program_name, vname, strlen(vname));
+		return 0;
 	}
 	for ( int i = 0; i < strlen(vname); i++ ){
 		if ( !(isalnum(vname[i]) || vname[i] == '_') ){
-			fprintf(normal, "%s: variable name `%s' contains illegal characters, ignored\n", program_name, vname);
-			return;
+			fprintf(normal, "%s: variable name `%s' contains illegal characters.\n", program_name, vname);
+			return 0;
+		}
+	}
+
+	/* locate duplicates */
+	for ( int i = 0; i < num_entries; i++ ){
+		const struct entry* e = &entries[i];
+		if ( strcmp(e->variable, vname) == 0 ){
+			fprintf(normal, "%s: duplicate variable name `%s'.\n", program_name, vname);
+			return 0;
 		}
 	}
 
@@ -132,6 +157,8 @@ static void add_entry(char* str){
 	e->out = 0;
 	e->lnk = NULL;
 	num_entries++;
+
+	return 1;
 }
 
 static struct entry * find_entry(const char * path) {
@@ -214,6 +241,13 @@ int parse_dir(const char * internal_path, const char * base_path) {
 	return 0;
 }
 
+static void reopen_output(){
+	fclose(verbose);
+	fclose(normal);
+	verbose = fopen(log_level >= 2 ? "/dev/stderr" : "/dev/null", "w");
+	normal  = fopen(log_level >= 1 ? "/dev/stderr" : "/dev/null", "w");
+}
+
 int main(int argc, char* argv[]){
 	/* extract program name from path. e.g. /path/to/MArCd -> MArCd */
 	const char* separator = strrchr(argv[0], '/');
@@ -223,22 +257,22 @@ int main(int argc, char* argv[]){
 		program_name = argv[0];
 	}
 
-	int level = 1;
 	const char* output = "/dev/stdout";
 	const char* deps = NULL;
 	const char* header = NULL;
 	const char* srcdir = ".";
+
+	/* initial output */
+	verbose = fopen("/dev/null",   "w");
+	normal  = fopen("/dev/stderr", "w");
 
 	/* init entry table */
 	max_entries = 256;
 	entries = malloc(sizeof(void*)*max_entries);
 	memset(entries, 0, sizeof(void*)*max_entries);
 
-	normal  = fopen("/dev/stderr", "w");
-	verbose = fopen("/dev/stderr", "w");
-
 	int op, option_index;
-	while ( (op=getopt_long(argc, argv, "r:f:o:d:e:p:s:vqh", options, &option_index)) != -1 ){
+	while ( (op=getopt_long(argc, argv, "r:f:o:d:e:p:s:vqhbi", options, &option_index)) != -1 ){
 		switch ( op ){
 		case 0:
 			break;
@@ -256,21 +290,24 @@ int main(int argc, char* argv[]){
 		{
 			FILE* fp = strcmp(optarg, "-") != 0 ? fopen(optarg, "r") : stdin;
 			if ( !fp ){
-				if ( level >= 1 ) fprintf(stderr, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
+				fprintf(normal, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
 				exit(1);
 			}
 			char* line = NULL;
 			size_t bytes = 0;
 			while ( getline(&line, &bytes, fp) != -1 ){
-				add_entry(line);
+				if ( !add_entry(line) && missing_fatal ){
+					exit(1);
+				}
 			}
 			if ( ferror(fp) ){
-				if ( level >= 1 ) fprintf(stderr, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
+				fprintf(normal, "%s: failed to read from `%s': %s.\n", program_name, optarg, strerror(errno));
 				exit(1);
 			}
 			free(line);
 			fclose(fp);
 		}
+		file_given = 1;
 		break;
 
 		case 'o':
@@ -294,11 +331,21 @@ int main(int argc, char* argv[]){
 			break;
 
 		case 'v':
-			level = 2;
+			log_level = 2;
+			reopen_output();
 			break;
 
 		case 'q':
-			level = 0;
+			log_level = 0;
+			reopen_output();
+			break;
+
+		case 'b': /* --break */
+			missing_fatal = 1;
+			break;
+
+		case 'i': /* --ignore */
+			missing_fatal = 0;
 			break;
 
 		case 'h':
@@ -313,8 +360,6 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
-	verbose = fopen(level >= 2 ? "/dev/stderr" : "/dev/null", "w");
-	normal  = fopen(level >= 1 ? "/dev/stderr" : "/dev/null", "w");
 	FILE* dst = fopen(output, "w");
 	if ( !dst ){
 		fprintf(stderr, "%s: failed to open `%s' for writing: %s\n", program_name, output, strerror(errno));
@@ -331,11 +376,17 @@ int main(int argc, char* argv[]){
 
 	/* read entries from arguments */
 	for ( int i = optind; i < argc; i++ ){
-		add_entry(argv[i]);
+		char* line = argv[i];
+		if ( !add_entry(line) && missing_fatal ){
+			exit(1);
+		}
 	}
 
-	if ( num_entries == 0 ){
-		fprintf(normal, "usage: c DATANAME:FILENAME..\n");
+	/* bail out if there is no files to pack. If '-f' was given but it was empty
+	 * it is probably what the user want so let it generate an empty pack. */
+	if ( num_entries == 0 && file_given == 0 ){
+		fprintf(stderr, "%s: no files given.\n", program_name);
+		fprintf(normal, "usage: %s DATANAME:FILENAME..\n", program_name);
 		return 1;
 	}
 
@@ -384,6 +435,13 @@ int main(int argc, char* argv[]){
 		if(S_ISLNK(st.st_mode)) {
 			tmp = realpath(e->src, NULL);
 			if(tmp == NULL) {
+				if ( missing_fatal ){
+					fprintf(stderr, "%s: failed to expand real path for lnk `%s': %s.\n", program_name, e->src, strerror(errno));
+					fclose(dst);
+					unlink(output);
+					exit(1);
+				}
+
 				fprintf(normal, "%s: failed to expand real path for lnk `%s': %s. Ignored.", program_name, e->src, strerror(errno));
 				free(e->dst);
 				e->dst = NULL; /* mark as invalid */
@@ -409,10 +467,16 @@ int main(int argc, char* argv[]){
 				continue;
 			}
 			free(tmp);
-
 		} else {
 			FILE* fp = fopen(e->src, "r");
 			if ( !fp ){
+				if ( missing_fatal ){
+					fprintf(stderr, "%s: failed to read `%s'.\n", program_name, e->src);
+					fclose(dst);
+					unlink(output);
+					exit(1);
+				}
+
 				fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
 				free(e->dst);
 				e->dst = NULL; /* mark as invalid */
@@ -483,7 +547,7 @@ int main(int argc, char* argv[]){
 			fprintf(fp, "%s: \\\n", output);
 			for ( struct entry* e = &entries[0]; e->src; e++ ){
 				if ( !e->dst ) continue;
-				fprintf(fp, "\t%s \\\n", e->src);
+				fprintf(fp, "\t%s %s\n", e->src, (e+1)->src ? "\\" : "");
 			}
 			fprintf(fp, "\n");
 			fclose(fp);

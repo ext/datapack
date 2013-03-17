@@ -261,13 +261,14 @@ static int write_symlink(FILE* dst, struct entry* e){
 	}
 
 	e->lnk = find_entry(tmp);
-	free(tmp);
 
 	if(e->lnk == NULL) {
 		fprintf(normal, "%s: failed to read target `%s' for lnk `%s', ignored.\n", program_name, tmp, e->src);
+		free(tmp);
 		return 1;
 	}
 
+	free(tmp);
 	return 0;
 }
 

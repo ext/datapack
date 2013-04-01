@@ -92,8 +92,8 @@ static char* strip(char* str){
 static int add_entry(char* str){
 	if ( num_entries+1 == max_entries ){
 		max_entries += 256;
-		entries = realloc(entries, sizeof(void*)*max_entries);
-		memset(entries+num_entries, 0, sizeof(void*)*(max_entries-num_entries));
+		entries = realloc(entries, sizeof(struct entry)*max_entries);
+		memset(entries+num_entries, 0, sizeof(struct entry)*(max_entries-num_entries));
 	}
 
 	/* strip leading and trailing whitespace (including newline) */
@@ -454,8 +454,8 @@ int main(int argc, char* argv[]){
 
 	/* init entry table */
 	max_entries = 256;
-	entries = malloc(sizeof(void*)*max_entries);
-	memset(entries, 0, sizeof(void*)*max_entries);
+	entries = malloc(sizeof(struct entry)*max_entries);
+	memset(entries, 0, sizeof(struct entry)*max_entries);
 
 	int op, option_index;
 	while ( (op=getopt_long(argc, argv, "r:f:o:d:e:p:s:vqhbi", options, &option_index)) != -1 ){

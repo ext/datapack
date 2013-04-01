@@ -12,6 +12,8 @@ datapacker_SOURCES = pack.c datapack.h
 libdatapack_la_LIBADD = -lz
 libdatapack_la_SOURCES = unpack.c datapack.h
 
+include_HEADERS = datapack.h
+
 EXTRA_DIST = \
 	sample/data1.txt \
 	sample/data2.txt \

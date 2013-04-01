@@ -194,8 +194,8 @@ int parse_dir(const char * internal_path, const char * base_path) {
 	while( ( entry = readdir(dir)) != NULL) {
 		if(entry->d_name[0] == '.') continue; //Ignore hidden files and .., .
 
-		char * internal;
-		char * var_name;
+		char * internal = NULL;
+		char * var_name = NULL;
 
 		if(asprintf(&internal, "%s/%s", internal_path, entry->d_name) == -1) {
 			fprintf(verbose, "%s: asprintf returned -1\n", program_name);

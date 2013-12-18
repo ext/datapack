@@ -29,7 +29,8 @@ static int log_level = 1;
 static const char* struct_attrib = "";
 static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
 
-static struct option options[] = {
+static const char* shortopts = "r:f:o:d:e:p:s:vqhbi";
+static struct option longopts[] = {
 	{"from-file", required_argument, 0, 'f'},
 	{"from-dir",  required_argument, 0, 'r'},
 	{"output",    required_argument, 0, 'o'},
@@ -468,7 +469,7 @@ int main(int argc, char* argv[]){
 	memset(entries, 0, sizeof(struct entry)*max_entries);
 
 	int op, option_index;
-	while ( (op=getopt_long(argc, argv, "r:f:o:d:e:p:s:vqhbi", options, &option_index)) != -1 ){
+	while ( (op=getopt_long(argc, argv, shortopts, longopts, &option_index)) != -1 ){
 		switch ( op ){
 		case 0:
 			break;

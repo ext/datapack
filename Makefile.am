@@ -9,7 +9,7 @@ lib_LTLIBRARIES = libdatapack.la
 datapacker_LDADD = -lz
 datapacker_SOURCES = pack.c datapack.h
 
-libdatapack_la_LIBADD = -lz
+libdatapack_la_LIBADD = -lz -ldl
 libdatapack_la_SOURCES = unpack.c datapack.h
 
 include_HEADERS = datapack.h

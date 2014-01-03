@@ -54,14 +54,14 @@ int unpack(const struct datapack_file_entry* src, char** dstptr){
 	}
 
 	*dstptr = NULL;
-	const size_t bufsize = src->out_bytes;
+	const size_t bufsize = src->usize;
 	char* dst = (char*) malloc(bufsize+1); /* must fit null-terminator */
 
 	z_stream strm;
 	strm.zalloc = Z_NULL;
 	strm.zfree = Z_NULL;
 	strm.opaque = Z_NULL;
-	strm.avail_in = (unsigned int) src->in_bytes;
+	strm.avail_in = (unsigned int) src->csize;
 	strm.next_in = (Bytef*)src->data;
 	int ret = inflateInit(&strm);
 	if (ret != Z_OK)
@@ -236,7 +236,7 @@ FILE* unpack_open(const char* filename, const char* mode){
 	ctx->src = entry;
 	ctx->bufsize = 0;
 
-	ctx->strm.avail_in = (unsigned int) entry->in_bytes;
+	ctx->strm.avail_in = (unsigned int) entry->csize;
 	ctx->strm.next_in = (unsigned char*)entry->data;
 	ctx->strm.zalloc = Z_NULL;
 	ctx->strm.zfree = Z_NULL;

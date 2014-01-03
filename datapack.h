@@ -12,8 +12,8 @@ extern "C" {
 struct datapack_file_entry {
 	const char* filename;      /* filename (null-terminated) */
 	const char* data;          /* compressed data */
-	size_t  in_bytes;          /* compressed size */
-	size_t out_bytes;          /* uncompressed size */
+	size_t csize;              /* compressed size */
+	size_t usize;              /* uncompressed size */
 };
 
 /**

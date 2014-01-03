@@ -13,7 +13,7 @@
 
 #define CHUNK 16384
 
-static const char* local = NULL;
+static char* local = NULL;
 
 int unpack_override(const char* dir){
 	free((char*)local);

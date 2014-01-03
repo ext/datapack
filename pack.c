@@ -429,6 +429,21 @@ static void reopen_output(){
 	normal  = fopen(log_level >= 1 ? "/dev/stderr" : "/dev/null", "w");
 }
 
+/**
+ * Strip trailing slash from path to ensure consistency both with or without the
+ * trailing slash.
+ */
+static char* strip_slash(char* str){
+	if ( !str || strcmp(str, "") == 0 ) return str;
+
+	const size_t last = strlen(str) - 1;
+	if ( str[last] == '/' ){
+		str[last] = 0;
+	}
+
+	return str;
+}
+
 int main(int argc, char* argv[]){
 	/* extract program name from path. e.g. /path/to/MArCd -> MArCd */
 	const char* separator = strrchr(argv[0], '/');
@@ -462,7 +477,7 @@ int main(int argc, char* argv[]){
 			exit(1);
 
 		case 'r':
-			srcdir = optarg;
+			srcdir = strip_slash(optarg);
 			if(parse_dir("", optarg)) {
 				exit(-1);
 			}
@@ -509,7 +524,7 @@ int main(int argc, char* argv[]){
 			break;
 
 		case 's':
-			srcdir = optarg;
+			srcdir = strip_slash(optarg);
 			break;
 
 		case 'v':
@@ -564,14 +579,6 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
-	/* strip trailing slash from srcdir (will be appended later). Ensures
-	 * consistency both with or without the trailing slash. */
-	{
-		size_t len = strlen(srcdir);
-		if ( srcdir[len-1] == '/' ) len--;
-		srcdir = strndup(srcdir, len);
-	}
-
 	/* prepend prefixes to both src and dst. (this is deferred as --prefix should apply to
 	 * --from-file no matter what order the arguments are given in) */
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
@@ -614,7 +621,6 @@ int main(int argc, char* argv[]){
 	fclose(dst);
 	fclose(verbose);
 	fclose(normal);
-	free((char*)srcdir);
 	free(entries);
 	entries = NULL;
 	return ret;

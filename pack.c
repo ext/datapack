@@ -172,37 +172,32 @@ static struct entry * find_entry(const char * path) {
 	return NULL;
 }
 
-int parse_dir(const char * internal_path, const char * base_path) {
-
-	char * path = NULL;
+int parse_dir(const char* internal_path, const char* base_path) {
+	char* path = NULL;
 	if(asprintf(&path, "%s/%s", base_path, internal_path) == -1) {
 		fprintf(verbose, "%s: asprintf returned -1\n", program_name);
 		return 1;
 	}
 
-	DIR * dir = opendir(path);
+	DIR* dir = opendir(path);
 	free(path);
 	if ( !dir ){
 		fprintf(verbose, "%s: failed to read directory `%s': %s.\n", program_name, optarg, strerror(errno));
 		return 1;
 	}
 
-	char * line = NULL;
-
-	struct dirent * entry = NULL;
-
+	char* line = NULL;
+	struct dirent* entry = NULL;
 	while( ( entry = readdir(dir)) != NULL) {
 		if(entry->d_name[0] == '.') continue; //Ignore hidden files and .., .
 
-		char * internal = NULL;
-		char * var_name = NULL;
-
+		char* internal = NULL;
 		if(asprintf(&internal, "%s/%s", internal_path, entry->d_name) == -1) {
 			fprintf(verbose, "%s: asprintf returned -1\n", program_name);
 			return 1;
 		}
 
-		var_name = strdup(internal);
+		char* var_name = strdup(internal);
 
 		for ( unsigned int i=0; i<strlen(var_name); ++i ) {
 			if(!isalnum(var_name[i]) && var_name[i] != '_') {

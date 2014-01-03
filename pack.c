@@ -132,7 +132,7 @@ static int add_entry(char* str){
 		fprintf(normal, "%s: variable name `%s' too long (max: 63, current: %zd)\n", program_name, vname, strlen(vname));
 		return 0;
 	}
-	for ( int i = 0; i < strlen(vname); i++ ){
+	for ( unsigned int i = 0; i < strlen(vname); i++ ){
 		if ( !(isalnum(vname[i]) || vname[i] == '_') ){
 			fprintf(normal, "%s: variable name `%s' contains illegal characters.\n", program_name, vname);
 			return 0;
@@ -140,7 +140,7 @@ static int add_entry(char* str){
 	}
 
 	/* locate duplicates */
-	for ( int i = 0; i < num_entries; i++ ){
+	for ( unsigned int i = 0; i < num_entries; i++ ){
 		const struct entry* e = &entries[i];
 		if ( strcmp(e->variable, vname) == 0 ){
 			fprintf(normal, "%s: duplicate variable name `%s'.\n", program_name, vname);
@@ -163,7 +163,7 @@ static int add_entry(char* str){
 
 static struct entry * find_entry(const char * path) {
 	char buffer[PATH_MAX];
-	for(int i = 0; i < num_entries; ++i) {
+	for ( unsigned int i = 0; i < num_entries; ++i ) {
 		char * ret = realpath(entries[i].src, buffer);
 		if(ret != NULL && strcmp(buffer, path) == 0) {
 			return entries + i;
@@ -204,7 +204,7 @@ int parse_dir(const char * internal_path, const char * base_path) {
 
 		var_name = strdup(internal);
 
-		for(int i=0; i<strlen(var_name); ++i) {
+		for ( unsigned int i=0; i<strlen(var_name); ++i ) {
 			if(!isalnum(var_name[i]) && var_name[i] != '_') {
 				var_name[i] = '_';
 			}
@@ -317,7 +317,7 @@ static int write_regular(FILE* dst, struct entry* e){
 			deflate(&strm, flush);
 
 			unsigned int have = CHUNK - strm.avail_out;
-			for ( int i = 0; i < have; i++ ){
+			for ( unsigned int i = 0; i < have; i++ ){
 				fprintf(dst, "\\x%02X", out[i]);
 				bytes++;
 			}

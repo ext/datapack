@@ -29,7 +29,8 @@ static int log_level = 1;
 static const char* struct_attrib = "";
 static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
 
-static struct option options[] = {
+static const char* shortopts = "r:f:o:d:e:p:s:vqhbi";
+static struct option longopts[] = {
 	{"from-file", required_argument, 0, 'f'},
 	{"from-dir",  required_argument, 0, 'r'},
 	{"output",    required_argument, 0, 'o'},
@@ -132,7 +133,7 @@ static int add_entry(char* str){
 		fprintf(normal, "%s: variable name `%s' too long (max: 63, current: %zd)\n", program_name, vname, strlen(vname));
 		return 0;
 	}
-	for ( int i = 0; i < strlen(vname); i++ ){
+	for ( unsigned int i = 0; i < strlen(vname); i++ ){
 		if ( !(isalnum(vname[i]) || vname[i] == '_') ){
 			fprintf(normal, "%s: variable name `%s' contains illegal characters.\n", program_name, vname);
 			return 0;
@@ -140,7 +141,7 @@ static int add_entry(char* str){
 	}
 
 	/* locate duplicates */
-	for ( int i = 0; i < num_entries; i++ ){
+	for ( unsigned int i = 0; i < num_entries; i++ ){
 		const struct entry* e = &entries[i];
 		if ( strcmp(e->variable, vname) == 0 ){
 			fprintf(normal, "%s: duplicate variable name `%s'.\n", program_name, vname);
@@ -163,7 +164,7 @@ static int add_entry(char* str){
 
 static struct entry * find_entry(const char * path) {
 	char buffer[PATH_MAX];
-	for(int i = 0; i < num_entries; ++i) {
+	for ( unsigned int i = 0; i < num_entries; ++i ) {
 		char * ret = realpath(entries[i].src, buffer);
 		if(ret != NULL && strcmp(buffer, path) == 0) {
 			return entries + i;
@@ -172,39 +173,34 @@ static struct entry * find_entry(const char * path) {
 	return NULL;
 }
 
-int parse_dir(const char * internal_path, const char * base_path) {
-
-	char * path = NULL;
+int parse_dir(const char* internal_path, const char* base_path) {
+	char* path = NULL;
 	if(asprintf(&path, "%s/%s", base_path, internal_path) == -1) {
 		fprintf(verbose, "%s: asprintf returned -1\n", program_name);
 		return 1;
 	}
 
-	DIR * dir = opendir(path);
+	DIR* dir = opendir(path);
 	free(path);
 	if ( !dir ){
 		fprintf(verbose, "%s: failed to read directory `%s': %s.\n", program_name, optarg, strerror(errno));
 		return 1;
 	}
 
-	char * line = NULL;
-
-	struct dirent * entry = NULL;
-
+	char* line = NULL;
+	struct dirent* entry = NULL;
 	while( ( entry = readdir(dir)) != NULL) {
 		if(entry->d_name[0] == '.') continue; //Ignore hidden files and .., .
 
-		char * internal = NULL;
-		char * var_name = NULL;
-
+		char* internal = NULL;
 		if(asprintf(&internal, "%s/%s", internal_path, entry->d_name) == -1) {
 			fprintf(verbose, "%s: asprintf returned -1\n", program_name);
 			return 1;
 		}
 
-		var_name = strdup(internal);
+		char* var_name = strdup(internal);
 
-		for(int i=0; i<strlen(var_name); ++i) {
+		for ( unsigned int i=0; i<strlen(var_name); ++i ) {
 			if(!isalnum(var_name[i]) && var_name[i] != '_') {
 				var_name[i] = '_';
 			}
@@ -317,7 +313,7 @@ static int write_regular(FILE* dst, struct entry* e){
 			deflate(&strm, flush);
 
 			unsigned int have = CHUNK - strm.avail_out;
-			for ( int i = 0; i < have; i++ ){
+			for ( unsigned int i = 0; i < have; i++ ){
 				fprintf(dst, "\\x%02X", out[i]);
 				bytes++;
 			}
@@ -434,6 +430,21 @@ static void reopen_output(){
 	normal  = fopen(log_level >= 1 ? "/dev/stderr" : "/dev/null", "w");
 }
 
+/**
+ * Strip trailing slash from path to ensure consistency both with or without the
+ * trailing slash.
+ */
+static char* strip_slash(char* str){
+	if ( !str || strcmp(str, "") == 0 ) return str;
+
+	const size_t last = strlen(str) - 1;
+	if ( str[last] == '/' ){
+		str[last] = 0;
+	}
+
+	return str;
+}
+
 int main(int argc, char* argv[]){
 	/* extract program name from path. e.g. /path/to/MArCd -> MArCd */
 	const char* separator = strrchr(argv[0], '/');
@@ -458,7 +469,7 @@ int main(int argc, char* argv[]){
 	memset(entries, 0, sizeof(struct entry)*max_entries);
 
 	int op, option_index;
-	while ( (op=getopt_long(argc, argv, "r:f:o:d:e:p:s:vqhbi", options, &option_index)) != -1 ){
+	while ( (op=getopt_long(argc, argv, shortopts, longopts, &option_index)) != -1 ){
 		switch ( op ){
 		case 0:
 			break;
@@ -467,7 +478,7 @@ int main(int argc, char* argv[]){
 			exit(1);
 
 		case 'r':
-			srcdir = optarg;
+			srcdir = strip_slash(optarg);
 			if(parse_dir("", optarg)) {
 				exit(-1);
 			}
@@ -514,7 +525,7 @@ int main(int argc, char* argv[]){
 			break;
 
 		case 's':
-			srcdir = optarg;
+			srcdir = strip_slash(optarg);
 			break;
 
 		case 'v':
@@ -569,14 +580,6 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 
-	/* strip trailing slash from srcdir (will be appended later). Ensures
-	 * consistency both with or without the trailing slash. */
-	{
-		size_t len = strlen(srcdir);
-		if ( srcdir[len-1] == '/' ) len--;
-		srcdir = strndup(srcdir, len);
-	}
-
 	/* prepend prefixes to both src and dst. (this is deferred as --prefix should apply to
 	 * --from-file no matter what order the arguments are given in) */
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
@@ -619,7 +622,6 @@ int main(int argc, char* argv[]){
 	fclose(dst);
 	fclose(verbose);
 	fclose(normal);
-	free((char*)srcdir);
 	free(entries);
 	entries = NULL;
 	return ret;

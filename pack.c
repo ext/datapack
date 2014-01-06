@@ -2,6 +2,9 @@
 #include "config.h"
 #endif
 
+#include "datapack.h"
+#include "pak.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +17,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "datapack.h"
+#include <endian.h>
+
+enum type_t {
+	C_SOURCE,
+	BINARY,
+};
 
 #define CHUNK 16384
 static unsigned char  in[CHUNK];
@@ -28,8 +36,9 @@ static int missing_fatal = 1;
 static int log_level = 1;
 static const char* struct_attrib = "";
 static const char* data_attrib   = "__attribute__((section (\"datapack\")))";
+static enum type_t type = C_SOURCE;
 
-static const char* shortopts = "r:f:o:d:e:p:s:vqhbi";
+static const char* shortopts = "r:f:o:d:e:p:s:t:vqhbi";
 static struct option longopts[] = {
 	{"from-file", required_argument, 0, 'f'},
 	{"from-dir",  required_argument, 0, 'r'},
@@ -38,6 +47,7 @@ static struct option longopts[] = {
 	{"header",    required_argument, 0, 'e'},
 	{"prefix",    required_argument, 0, 'p'},
 	{"srcdir",    required_argument, 0, 's'},
+	{"type",      required_argument, 0, 't'},
 	{"verbose",   no_argument, 0, 'v'},
 	{"quiet",     no_argument, 0, 'q'},
 	{"help",      no_argument, 0, 'h'},
@@ -56,6 +66,7 @@ static void show_usage(){
 	       "  -f, --from-file=FILE    Read list from file (same format, one entry per line).\n"
 	       "  -r, --from-dir=DIR      Use everything in directory.\n"
 	       "  -o, --output=FILE       Write output to file instead of stdout.\n"
+	       "  -t, --type=(c|bin)      Output format.\n"
 	       "  -d, --deps=FILE         Write optional Makefile dependency list.\n"
 	       "  -e, --header=FILE       Write optional header-file.\n"
 	       "  -p, --prefix=STRING     Prefix all targets with STRING.\n"
@@ -268,9 +279,62 @@ static int write_symlink(FILE* dst, struct entry* e){
 	return 0;
 }
 
+static size_t write_bytes_source(FILE* dst, const unsigned char* src, size_t bytes){
+	for ( unsigned int i = 0; i < bytes; i++ ){
+		fprintf(dst, "\\x%02X", src[i]);
+	}
+	return bytes;
+}
+
+static size_t write_bytes_binary(FILE* dst, const unsigned char* src, size_t bytes){
+	return fwrite(src, 1, bytes, dst);
+}
+
+static int write_compressed(FILE* src, FILE* dst, struct entry* e, size_t* csize_ptr, size_t* usize_ptr, size_t(*write_bytes)(FILE*, const unsigned char*, size_t)){
+	z_stream strm;
+	int flush;
+
+	strm.zalloc = Z_NULL;
+	strm.zfree = Z_NULL;
+	strm.opaque = Z_NULL;
+
+	int ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
+	if (ret != Z_OK){
+		fclose(src);
+		return 1;
+	}
+
+	size_t usize = 0;
+	size_t csize = 0;
+	do {
+		strm.avail_in = (unsigned int) fread(in, 1, CHUNK, src);
+		usize += strm.avail_in;
+		if (ferror(src)) {
+			deflateEnd(&strm);
+			return 1;
+		}
+		flush = feof(src) ? Z_FINISH : Z_NO_FLUSH;
+		strm.next_in = in;
+
+		do {
+			strm.avail_out = CHUNK;
+			strm.next_out = out;
+			deflate(&strm, flush);
+
+			unsigned int have = CHUNK - strm.avail_out;
+			csize += write_bytes(dst, out, have);
+		} while (strm.avail_out == 0);
+	} while (flush != Z_FINISH);
+	deflateEnd(&strm);
+
+	*csize_ptr = csize;
+	*usize_ptr = usize;
+	return 0;
+}
+
 static int write_regular(FILE* dst, struct entry* e){
-	FILE* fp = fopen(e->src, "r");
-	if ( !fp ){
+	FILE* src = fopen(e->src, "r");
+	if ( !src ){
 		if ( missing_fatal ){
 			fprintf(stderr, "%s: failed to read `%s'.\n", program_name, e->src);
 			return 1;
@@ -281,56 +345,16 @@ static int write_regular(FILE* dst, struct entry* e){
 	}
 
 	fprintf(dst, "static const char %s_buf[] %s = \"", e->variable, data_attrib);
-
-	z_stream strm;
-	int flush;
-
-	strm.zalloc = Z_NULL;
-	strm.zfree = Z_NULL;
-	strm.opaque = Z_NULL;
-
-	int ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
-	if (ret != Z_OK){
-		fclose(fp);
+	if ( write_compressed(src, dst, e, &e->in, &e->out, write_bytes_source) != 0 ){
 		return 1;
 	}
-
-	size_t bytes_r = 0;
-	size_t bytes = 0;
-	do {
-		strm.avail_in = (unsigned int) fread(in, 1, CHUNK, fp);
-		bytes_r += strm.avail_in;
-		if (ferror(fp)) {
-			deflateEnd(&strm);
-			return 1;
-		}
-		flush = feof(fp) ? Z_FINISH : Z_NO_FLUSH;
-		strm.next_in = in;
-
-		do {
-			strm.avail_out = CHUNK;
-			strm.next_out = out;
-			deflate(&strm, flush);
-
-			unsigned int have = CHUNK - strm.avail_out;
-			for ( unsigned int i = 0; i < have; i++ ){
-				fprintf(dst, "\\x%02X", out[i]);
-				bytes++;
-			}
-
-		} while (strm.avail_out == 0);
-	} while (flush != Z_FINISH);
-
 	fprintf(dst, "\";\n");
-	e->in = bytes;
-	e->out = bytes_r;
 
-	deflateEnd(&strm);
-	fclose(fp);
+	fclose(src);
 	return 0;
 }
 
-static int write_binary(FILE* dst){
+static int write_data(FILE* dst){
 	int files = 0;
 
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
@@ -367,7 +391,7 @@ static void write_entries(FILE* dst){
 		if ( !e->dst ) continue;
 		struct entry * real = e;
 		if(e->lnk != NULL) real = e->lnk;
-		fprintf(dst, "struct datapack_file_entry %s %s = {\"%s\", %s_buf, %zd, %zd};\n",
+		fprintf(dst, "struct datapack_entry %s %s = {0, \"%s\", %s_buf, 0, %zd, %zd};\n",
 		        e->variable, struct_attrib, e->dst, real->variable, real->in, real->out);
 	};
 	fprintf(dst, "\n");
@@ -402,7 +426,7 @@ static void write_header(const char* filename){
 		fprintf(fp, "#ifndef DATAPACKER_FILES_H\n#define DATAPACKER_FILES_H\n\n#include \"datapack.h\"\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n");
 		for ( struct entry* e = &entries[0]; e->src; e++ ){
 			if ( !e->dst ) continue;
-			fprintf(fp, "extern struct datapack_file_entry %s;\n", e->variable);
+			fprintf(fp, "extern struct datapack_entry %s;\n", e->variable);
 		}
 		fprintf(fp, "\n#ifdef __cplusplus\n}\n#endif\n\n#endif /* DATAPACKER_FILES_H */\n");
 		fclose(fp);
@@ -410,7 +434,7 @@ static void write_header(const char* filename){
 }
 
 static void write_table(FILE* dst){
-	fprintf(dst, "struct datapack_file_entry* filetable[] = {\n");
+	fprintf(dst, "struct datapack_entry* filetable[] = {\n");
 	for ( struct entry* e = &entries[0]; e->src; e++ ){
 		if ( e->dst ){
 			fprintf(dst, "\t&%s,\n", e->variable);
@@ -421,6 +445,78 @@ static void write_table(FILE* dst){
 		e->src = NULL;
 	}
 	fprintf(dst, "\tNULL\n};\n\n");
+}
+
+static int write_source(FILE* dst, const char* output, const char* deps, const char* header){
+	int files = 0;
+
+	write_prelude(dst);
+	if ( (files=write_data(dst)) < 0 ){
+		unlink(output);
+		return 1;
+	}
+	write_entries(dst);
+	write_dependencies(deps, output);
+	write_header(header);
+	write_table(dst);
+
+	fprintf(verbose, "%d datafile(s) processed.\n", files);
+	return 0;
+}
+
+static int write_binary(FILE* dst){
+	static unsigned char datapack_magic[] = DATAPACK_MAGIC;
+
+	/* write magic */
+	fwrite(datapack_magic, sizeof(datapack_magic), 1, dst);
+
+	/* write header */
+	struct datapack_pak_header header = {
+		.dp_version = 1,
+		.dp_offset = htobe16(sizeof(datapack_magic) + sizeof(struct datapack_pak_header)),
+		.dp_num_entries = htobe16(num_entries),
+	};
+	fwrite(&header, sizeof(struct datapack_pak_header), 1, dst);
+
+	/* write file table */
+	for ( struct entry* e = &entries[0]; e->src; e++ ){
+		/* skip header (filled later */
+		const long header = ftell(dst);
+		const size_t header_size = sizeof(struct datapack_pakfile_entry) + strlen(e->dst);
+		fseek(dst, (long)header_size, SEEK_CUR);
+
+		printf("writing %s at %ld\n", e->dst, ftell(dst));
+
+		/* write data */
+		FILE* src = fopen(e->src, "r");
+		if ( !src ){
+			if ( missing_fatal ){
+				fprintf(stderr, "%s: failed to read `%s'.\n", program_name, e->src);
+				return 1;
+			}
+
+			fprintf(normal, "%s: failed to read `%s', ignored.\n", program_name, e->src);
+			return 1;
+		}
+		if ( write_compressed(src, dst, e, &e->in, &e->out, write_bytes_binary) != 0 ){
+			return 1;
+		}
+		fclose(src);
+
+		/* write header */
+		struct datapack_pakfile_entry p = {
+			.csize = htobe32((unsigned int)e->in),
+			.usize = htobe32((unsigned int)e->out),
+			.fsize = htobe32((unsigned int)strlen(e->dst)),
+		};
+		long cur = ftell(dst);
+		fseek(dst, header, SEEK_SET);
+		fwrite(&p, sizeof(struct datapack_pakfile_entry), 1, dst);
+		fwrite(e->dst, strlen(e->dst), 1, dst);
+		fseek(dst, cur, SEEK_SET);
+	}
+
+	return 0;
 }
 
 static void reopen_output(){
@@ -528,6 +624,16 @@ int main(int argc, char* argv[]){
 			srcdir = strip_slash(optarg);
 			break;
 
+		case 't': /* --type */
+			if ( strcmp(optarg, "c") == 0 ){
+				type = C_SOURCE;
+			} else if ( strcmp(optarg, "bin") == 0 ){
+				type = BINARY;
+			} else {
+				fprintf(stderr, "%s: unknown output type `%s', ignored.\n", program_name, optarg);
+			}
+			break;
+
 		case 'v':
 			log_level = 2;
 			reopen_output();
@@ -603,22 +709,17 @@ int main(int argc, char* argv[]){
 	}
 
 	int ret = 0;
-	int files;
 
-	write_prelude(dst);
-	if ( (files=write_binary(dst)) < 0 ){
-		unlink(output);
-		ret = 1;
-		goto fin;
+	switch ( type ){
+	case C_SOURCE:
+		ret = write_source(dst, output,  deps, header);
+		break;
+
+	case BINARY:
+		ret = write_binary(dst);
+		break;
 	}
-	write_entries(dst);
-	write_dependencies(deps, output);
-	write_header(header);
-	write_table(dst);
 
-	fprintf(verbose, "%d datafile(s) processed.\n", files);
-
-  fin:
 	fclose(dst);
 	fclose(verbose);
 	fclose(normal);

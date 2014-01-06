@@ -9,11 +9,118 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
+#include <dlfcn.h>
 #include "datapack.h"
+#include "pak.h"
 
 #define CHUNK 16384
 
 static char* local = NULL;
+
+struct datapack {
+	FILE* fp;
+	size_t num_entries;
+	struct datapack_entry* filetable[];
+};
+
+static datapack_t datapack_open_proc(){
+	void* dl = dlopen(NULL, RTLD_LAZY);
+	if ( !dl ){
+		errno = EINVAL;
+		return NULL;
+	}
+
+	const struct datapack_entry** filetable = (const struct datapack_entry**)dlsym(dl, "filetable");
+	if ( !filetable ){
+		errno = ENOENT;
+		return NULL;
+	}
+
+	size_t n = 1; /* 1 slot for sentinel */
+	const struct datapack_entry* cur = filetable[0];
+	while ( cur ){
+		cur = filetable[++n];
+	}
+
+	const size_t tablesize = sizeof(struct datapack_entry) * n;
+	datapack_t pak = (datapack_t)malloc(sizeof(struct datapack) + tablesize);
+	pak->fp = NULL;
+	pak->num_entries = n;
+	memcpy(pak->filetable, filetable, tablesize);
+	/** @todo fill handle */
+
+	return pak;
+}
+
+datapack_t datapack_open(const char* filename){
+	if ( !filename ){
+		return datapack_open_proc();
+	}
+
+	FILE* fp = fopen(filename, "r");
+	if ( !fp ) return NULL;
+
+	static unsigned char expected[] = DATAPACK_MAGIC;
+	static unsigned char actual[sizeof(expected)];
+	fread(actual, 1, sizeof(expected), fp);
+	if ( memcmp(expected, actual, sizeof(expected)) != 0 ){
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* read and validate header */
+	struct datapack_pak_header header;
+	fread(&header, sizeof(struct datapack_pak_header), 1, fp);
+	if ( header.dp_version != 1 ){
+		errno = EINVAL;
+		return NULL;
+	}
+
+	/* parse header */
+	long offset = be16toh(header.dp_offset);
+	size_t num_entries = (size_t)be16toh(header.dp_num_entries) + 1; /* +1 for sentinel */
+	fseek(fp, offset, SEEK_SET);
+
+	/* allocate new table (native format) */
+	const size_t tablesize = sizeof(struct datapack_entry) * num_entries;
+	datapack_t pak = (datapack_t)malloc(sizeof(struct datapack) + tablesize);
+	pak->fp = fp;
+	pak->num_entries = num_entries;
+	memset(&pak->filetable, 0, tablesize);
+
+	for ( unsigned int i = 0; i < num_entries; i++ ){
+		/* read entry */
+		struct datapack_pakfile_entry packed;
+		fread(&packed, sizeof(struct datapack_pakfile_entry), 1, fp);
+		const size_t csize = be32toh(packed.csize);
+		const size_t usize = be32toh(packed.usize);
+		const size_t fsize = be32toh(packed.fsize);
+
+		/* read filename */
+		char* filename = (char*)malloc(fsize+1); /* +1 for null-terminator */
+		fread(filename, fsize, 1, fp);
+		filename[fsize] = 0;
+
+		/* store entry */
+		struct datapack_entry* entry = malloc(sizeof(struct datapack_entry));
+		entry->handle = pak;
+		entry->filename = filename;
+		entry->data = NULL;
+		entry->offset = ftell(fp);
+		entry->csize = csize;
+		entry->usize = usize;
+		pak->filetable[i] = entry;
+
+		/* skip data */
+		fseek(fp, (long)csize, SEEK_CUR);
+	}
+
+	return pak;
+}
+
+void datapack_close(datapack_t handle){
+	free(handle);
+}
 
 int unpack_override(const char* dir){
 	free((char*)local);
@@ -25,7 +132,7 @@ int unpack_override(const char* dir){
 	return 0;
 }
 
-int unpack(const struct datapack_file_entry* src, char** dstptr){
+int unpack(const struct datapack_entry* src, char** dstptr){
 	if ( local ){
 		char* local_path;
 		if ( asprintf(&local_path, "%s/%s", local, src->filename) == -1 ){
@@ -53,16 +160,26 @@ int unpack(const struct datapack_file_entry* src, char** dstptr){
 		}
 	}
 
+	/* prepare destination buffer */
 	*dstptr = NULL;
 	const size_t bufsize = src->usize;
 	char* dst = (char*) malloc(bufsize+1); /* must fit null-terminator */
+
+	/* prepare source buffer */
+	unsigned char* srcbuf = (unsigned char*)malloc(src->csize);
+	if ( src->data ){
+		memcpy(srcbuf, src->data, src->csize);
+	} else {
+		fseek(src->handle->fp, src->offset, SEEK_SET);
+		fread(srcbuf, src->csize, 1, src->handle->fp);
+	}
 
 	z_stream strm;
 	strm.zalloc = Z_NULL;
 	strm.zfree = Z_NULL;
 	strm.opaque = Z_NULL;
 	strm.avail_in = (unsigned int) src->csize;
-	strm.next_in = (Bytef*)src->data;
+	strm.next_in = (Bytef*)srcbuf;
 	int ret = inflateInit(&strm);
 	if (ret != Z_OK)
 		return ret;
@@ -83,29 +200,30 @@ int unpack(const struct datapack_file_entry* src, char** dstptr){
 	*dstptr = dst;                   /* return pointer to caller */
 
 	/* clean up and return */
+	free(srcbuf);
 	inflateEnd(&strm);
 	return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
-struct datapack_file_entry* unpack_find(const char* filename){
-	extern struct datapack_file_entry* filetable[];
-	struct datapack_file_entry* cur = filetable[0];
+struct datapack_entry* unpack_find(datapack_t handle, const char* filename){
+	if ( !handle ) return NULL;
+	struct datapack_entry* cur = handle->filetable[0];
 
 	int i = 0;
 	while ( cur ){
 		if ( strcmp(filename, cur->filename) == 0 ){
 			return cur;
 		}
-		cur = filetable[++i];
+		cur = handle->filetable[++i];
 	}
 
 	return NULL;
 }
 
-int unpack_filename(const char* filename, char** dst){
+int unpack_filename(datapack_t handle, const char* filename, char** dst){
 	*dst = NULL;
 
-	struct datapack_file_entry* entry = unpack_find(filename);
+	struct datapack_entry* entry = unpack_find(handle, filename);
 	if ( !entry ){
 		return ENOENT;
 	}
@@ -139,7 +257,7 @@ static void rec_mkdir(const char *path){
 }
 
 struct unpack_cookie_data {
-	const struct datapack_file_entry* src;
+	const struct datapack_entry* src;
 	z_stream strm;
 	size_t bufsize;
 	unsigned char buffer[CHUNK];
@@ -192,8 +310,8 @@ static cookie_io_functions_t unpack_cookie_func = {
 	unpack_close
 };
 
-FILE* unpack_open(const char* filename, const char* mode){
-	struct datapack_file_entry* entry = unpack_find(filename);
+FILE* unpack_open(datapack_t handle, const char* filename, const char* mode){
+	struct datapack_entry* entry = unpack_find(handle, filename);
 	if ( !entry ){
 		errno = ENOENT;
 		return NULL;

@@ -9,18 +9,9 @@
 #include "files.h"
 
 int main(int argc, const char* argv[]){
-	unpack_override(SRCDIR);
-
-	datapack_t pak = datapack_open(NULL);
-	if ( !pak ){
-		fprintf(stderr, "failed to open datapack: %s\n", strerror(errno));
-		return 1;
-	}
-
 	char* d1; unpack(&DATA1, &d1);
-	char* d2; unpack_filename(pak, "spam.txt", &d2);
-	char* d3; unpack_filename(pak, "data3.txt", &d3);
-	datapack_close(pak);
+	char* d2; unpack(&DATA2, &d2);
+	char* d3; unpack(&DATA3, &d3);
 
 	printf("data1: %s\n", d1);
 	printf("data2: %s\n", d2);

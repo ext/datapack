@@ -20,8 +20,14 @@ static char* local = NULL;
 struct datapack {
 	FILE* fp;
 	size_t num_entries;
+	void (*cleanup)(datapack_t handle);
+	char** filename;
 	struct datapack_entry* filetable[];
 };
+
+static void datapack_proc_cleanup(datapack_t handle){
+	/* nothing to cleanup */
+}
 
 static datapack_t datapack_open_proc(){
 	void* dl = dlopen(NULL, RTLD_LAZY);
@@ -46,10 +52,22 @@ static datapack_t datapack_open_proc(){
 	datapack_t pak = (datapack_t)malloc(sizeof(struct datapack) + tablesize);
 	pak->fp = NULL;
 	pak->num_entries = n;
+	pak->filename = NULL;
+	pak->cleanup = datapack_proc_cleanup;
 	memcpy(pak->filetable, filetable, tablesize);
 	/** @todo fill handle */
 
 	return pak;
+}
+
+static void datapack_file_cleanup(datapack_t handle){
+	for ( int i = 0; i < handle->num_entries; i++ ){
+		free(handle->filename[i]);
+		free(handle->filetable[i]);
+	}
+
+	fclose(handle->fp);
+	free(handle->filename);
 }
 
 datapack_t datapack_open(const char* filename){
@@ -90,6 +108,8 @@ datapack_t datapack_open(const char* filename){
 	datapack_t pak = (datapack_t)malloc(sizeof(struct datapack) + tablesize);
 	pak->fp = fp;
 	pak->num_entries = num_entries;
+	pak->filename = (char**)malloc(sizeof(char*) * num_entries);
+	pak->cleanup = datapack_file_cleanup;
 	memset(&pak->filetable, 0, tablesize);
 
 	for ( unsigned int i = 0; i < num_entries; i++ ){
@@ -120,6 +140,7 @@ datapack_t datapack_open(const char* filename){
 		entry->csize = csize;
 		entry->usize = usize;
 		pak->filetable[i] = entry;
+		pak->filename[i] = filename;
 
 		/* skip data */
 		fseek(fp, (long)csize, SEEK_CUR);
@@ -129,6 +150,7 @@ datapack_t datapack_open(const char* filename){
 }
 
 void datapack_close(datapack_t handle){
+	handle->cleanup(handle);
 	free(handle);
 }
 

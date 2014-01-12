@@ -1,12 +1,13 @@
-Simple test of compressing and storing datafiles inside executable.
+Simple test of compressing and storing datafiles inside executable or a loadable binary blob.
 
 # Features
 
-* Packs datafiles directly into executable.
+* Packs datafiles directly into executable or a binary blob.
 * Compression using zlib.
-* Allows users to override files (must be explicitly enabled)
-* API to access files in-memory (entire file is loaded into memory)
+* Allows users to override files (must be explicitly enabled.)
+* API to access files in-memory (entire file is loaded into memory.)
 * Supports FILE* for reading/writing (data is streamed).
+* Load files either using a hardcoded handle from a header or using filename.
 
 # Usage
 

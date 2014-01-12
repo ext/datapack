@@ -1,0 +1,10 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: datapack
+Description: Packs datafiles directly into executable or as binary blobs
+Version: @VERSION@
+Libs: -L${libdir} -ldatapack
+Cflags: -I${includedir}

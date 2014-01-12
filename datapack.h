@@ -71,6 +71,19 @@ FILE* unpack_open(datapack_t handle, const char* filename, const char* mode);
  */
 int unpack_override(const char* dir);
 
+typedef struct {
+	unsigned int major;
+	unsigned int minor;
+	unsigned int micro;
+} datapack_version_t;
+
+/**
+ * Get library version.
+ * @param version If non-null, it fills the structure.
+ * @return A string representation of the version number.
+ */
+const char* datapack_version(datapack_version_t* version);
+
 #ifdef __cplusplus
 }
 #endif

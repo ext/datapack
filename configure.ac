@@ -1,4 +1,9 @@
-AC_INIT([datapack],[3],[ext@sidvind.com])
+m4_define([_VERSION_MAJOR], [0])
+m4_define([_VERSION_MINOR], [3])
+m4_define([_VERSION_MICRO], [0])
+m4_define([_VERSION_NUM], m4_join([.],_VERSION_MAJOR, _VERSION_MINOR, _VERSION_MICRO))
+
+AC_INIT([datapack],_VERSION_NUM,[ext@sidvind.com])
 
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign -Wall -Werror -Wno-portability])
@@ -12,5 +17,12 @@ AC_PROG_CC_C99
 AC_PROG_CXX
 AC_PROG_LIBTOOL([disable-static])
 AC_DEFINE_UNQUOTED([SRCDIR], ["${srcdir}/"], [srcdir])
+
+VERSION_MAJOR=_VERSION_MAJOR
+VERSION_MINOR=_VERSION_MINOR
+VERSION_MICRO=_VERSION_MICRO
+AC_DEFINE_UNQUOTED([VERSION_MAJOR],  [${VERSION_MAJOR}], [Major version number])
+AC_DEFINE_UNQUOTED([VERSION_MINOR],  [${VERSION_MINOR}], [Minor version number])
+AC_DEFINE_UNQUOTED([VERSION_MICRO],  [${VERSION_MICRO}], [MICRO version number])
 
 AC_OUTPUT

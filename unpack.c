@@ -402,3 +402,12 @@ FILE* unpack_open(datapack_t handle, const char* filename, const char* mode){
 
 	return fopencookie(ctx, mode, unpack_cookie_func);
 }
+
+const char* datapack_version(datapack_version_t* version){
+	if ( version ){
+		version->major = VERSION_MAJOR;
+		version->minor = VERSION_MINOR;
+		version->micro = VERSION_MICRO;
+	}
+	return VERSION;
+}

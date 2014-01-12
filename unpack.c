@@ -62,7 +62,9 @@ datapack_t datapack_open(const char* filename){
 
 	static unsigned char expected[] = DATAPACK_MAGIC;
 	static unsigned char actual[sizeof(expected)];
-	fread(actual, 1, sizeof(expected), fp);
+	if ( fread(actual, sizeof(expected), 1, fp) != 1 ){
+		return NULL;
+	}
 	if ( memcmp(expected, actual, sizeof(expected)) != 0 ){
 		errno = EINVAL;
 		return NULL;
@@ -70,7 +72,9 @@ datapack_t datapack_open(const char* filename){
 
 	/* read and validate header */
 	struct datapack_pak_header header;
-	fread(&header, sizeof(struct datapack_pak_header), 1, fp);
+	if ( fread(&header, sizeof(struct datapack_pak_header), 1, fp) != 1 ){
+		return NULL;
+	}
 	if ( header.dp_version != 1 ){
 		errno = EINVAL;
 		return NULL;
@@ -91,14 +95,20 @@ datapack_t datapack_open(const char* filename){
 	for ( unsigned int i = 0; i < num_entries; i++ ){
 		/* read entry */
 		struct datapack_pakfile_entry packed;
-		fread(&packed, sizeof(struct datapack_pakfile_entry), 1, fp);
+		if ( fread(&packed, sizeof(struct datapack_pakfile_entry), 1, fp) != 1 ){
+			errno = EBADF;
+			return NULL;
+		}
 		const size_t csize = be32toh(packed.csize);
 		const size_t usize = be32toh(packed.usize);
 		const size_t fsize = be32toh(packed.fsize);
 
 		/* read filename */
 		char* filename = (char*)malloc(fsize+1); /* +1 for null-terminator */
-		fread(filename, fsize, 1, fp);
+		if ( fread(filename, fsize, 1, fp) != 1 ){
+			errno = EBADF;
+			return NULL;
+		}
 		filename[fsize] = 0;
 
 		/* store entry */
@@ -171,7 +181,10 @@ int unpack(const struct datapack_entry* src, char** dstptr){
 		memcpy(srcbuf, src->data, src->csize);
 	} else {
 		fseek(src->handle->fp, src->offset, SEEK_SET);
-		fread(srcbuf, src->csize, 1, src->handle->fp);
+		if ( fread(srcbuf, src->csize, 1, src->handle->fp) != 1 ){
+			/* @todo read in chunks */
+			return EBADF;
+		}
 	}
 
 	z_stream strm;

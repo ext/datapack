@@ -17,25 +17,31 @@ include_HEADERS = datapack.h
 EXTRA_DIST = \
 	sample/data1.txt \
 	sample/data2.txt \
-	sample/data3.txt
+	sample/data3.txt \
+	tests/data1.dpl \
+	tests/data1.txt \
+	tests/data2.dpl
 
 # pkg-config
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = datapack.pc
 
 # Unit-testing
-DATAFILES = tests/data1.dpl
 TESTS = tests/test
 check_PROGRAMS = $(TESTS)
 tests_test_CXXFLAGS = -Itests
+tests_test_LDFLAGS = -rdynamic
 tests_test_LDADD = libdatapack.la -lcppunit
-tests_test_SOURCES = tests/test.cpp $(DATAFILES)
-tests/test.c: $(DATAFILES:.dpl=.c)
+tests_test_SOURCES = tests/test.cpp
+nodist_tests_test_SOURCES = tests/data1.c
+tests/test.cpp: tests/data1.c tests/data2.pak
 
-CLEANFILES = $(DATAFILES:.dpl=.c) $(DATAFILES:.dpl=.h)
+CLEANFILES = tests/data1.c tests/data1.h tests/data2.pak
 
 .dpl.c: datapacker Makefile
 	@test x"$(@D)" = x || $(MKDIR_P) "$(@D)"
-	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s $(dir $<) -d $(DEPDIR)/$(notdir $<).d -e $(basename $@).h -o $@
+	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s $(dir $<) -e $(basename $@).h -o $@
 
--include $(addprefix ./$(DEPDIR)/, $(basename $(DATAFILES:.dpl=.dpl.d)))
+.dpl.pak: datapacker Makefile
+	@test x"$(@D)" = x || $(MKDIR_P) "$(@D)"
+	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s $(dir $<) -t bin -o $@

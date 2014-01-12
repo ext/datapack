@@ -1,0 +1,6 @@
+datapack-0.3
+
+	* unpack: add datapack_version query function.
+	* pack: supports packing data into binary blobs.
+	* unpack: operations that using filetable now requires a handle.
+	* misc: fix some warnings and cosmetic changes

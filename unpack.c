@@ -61,7 +61,7 @@ static datapack_t datapack_open_proc(){
 }
 
 static void datapack_file_cleanup(datapack_t handle){
-	for ( int i = 0; i < handle->num_entries; i++ ){
+	for ( unsigned int i = 0; i < handle->num_entries; i++ ){
 		free(handle->filename[i]);
 		free(handle->filetable[i]);
 	}

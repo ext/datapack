@@ -82,11 +82,11 @@ datapack_t datapack_open(const char* filename){
 
 	/* parse header */
 	long offset = be16toh(header.dp_offset);
-	size_t num_entries = (size_t)be16toh(header.dp_num_entries) + 1; /* +1 for sentinel */
+	size_t num_entries = (size_t)be16toh(header.dp_num_entries);
 	fseek(fp, offset, SEEK_SET);
 
 	/* allocate new table (native format) */
-	const size_t tablesize = sizeof(struct datapack_entry) * num_entries;
+	const size_t tablesize = sizeof(struct datapack_entry) * (num_entries + 1); /* +1 for sentinel */
 	datapack_t pak = (datapack_t)malloc(sizeof(struct datapack) + tablesize);
 	pak->fp = fp;
 	pak->num_entries = num_entries;

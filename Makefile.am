@@ -19,6 +19,10 @@ EXTRA_DIST = \
 	sample/data2.txt \
 	sample/data3.txt
 
+# pkg-config
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = datapack.pc
+
 # Unit-testing
 DATAFILES = tests/data1.dpl
 TESTS = tests/test

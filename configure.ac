@@ -6,7 +6,7 @@ m4_define([_VERSION_NUM], m4_join([.],_VERSION_MAJOR, _VERSION_MINOR, _VERSION_M
 AC_INIT([datapack],_VERSION_NUM,[ext@sidvind.com])
 
 AC_CONFIG_AUX_DIR([build-aux])
-AM_INIT_AUTOMAKE([foreign -Wall -Werror -Wno-portability])
+AM_INIT_AUTOMAKE([foreign -Wall -Werror -Wno-portability subdir-objects])
 AM_SILENT_RULES([yes])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])

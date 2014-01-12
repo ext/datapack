@@ -485,8 +485,6 @@ static int write_binary(FILE* dst){
 		const size_t header_size = sizeof(struct datapack_pakfile_entry) + strlen(e->dst);
 		fseek(dst, (long)header_size, SEEK_CUR);
 
-		printf("writing %s at %ld\n", e->dst, ftell(dst));
-
 		/* write data */
 		FILE* src = fopen(e->src, "r");
 		if ( !src ){

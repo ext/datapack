@@ -257,6 +257,9 @@ struct datapack_entry* unpack_find(datapack_t handle, const char* filename){
 
 int unpack_filename(datapack_t handle, const char* filename, char** dst){
 	*dst = NULL;
+	if ( !handle ){
+		return EINVAL;
+	}
 
 	struct datapack_entry* entry = unpack_find(handle, filename);
 	if ( !entry ){

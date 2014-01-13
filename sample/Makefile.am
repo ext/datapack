@@ -23,4 +23,4 @@ CLEANFILES = $(DATAFILES:.dpl=.c) $(DATAFILES:.dpl=.h) $(DATAFILES:.dpl=.pak)
 .dpl.pak:
 	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s $(dir $<) -t bin -o $@
 
--include $(addprefix ./$(DEPDIR)/, $(basename $(DATAFILES:.dpl=.dpl.d)))
+-include $(addprefix $(DEPDIR)/, $(DATAFILES:=.d))

@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
-#include <getopt.h>
 #include <libgen.h>
 #include <errno.h>
 #include <ctype.h>
@@ -18,6 +17,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <endian.h>
+
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#endif
 
 enum type_t {
 	C_SOURCE,

@@ -9,17 +9,35 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
-#include <libgen.h>
 #include <errno.h>
 #include <ctype.h>
-#include <dirent.h>
+
+#ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
+#endif
+
+#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
-#include <unistd.h>
-#include <endian.h>
+#endif
 
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
+#endif
+
+#ifdef HAVE_LIBGEN_H
+#include <libgen.h>
+#endif
+
+#ifdef HAVE_DIRENT_H
+#include <dirent.h>
+#endif
+
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+
+#ifdef HAVE_ENDIAN_H
+#include <endian.h>
 #endif
 
 enum type_t {

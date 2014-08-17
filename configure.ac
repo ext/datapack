@@ -17,7 +17,7 @@ AC_PROG_CC_C99
 AC_PROG_CXX
 AC_PROG_LIBTOOL([disable-static])
 AC_DEFINE_UNQUOTED([SRCDIR], ["${srcdir}/"], [srcdir])
-AC_CHECK_HEADERS([getopt.h])
+AC_CHECK_HEADERS([getopt.h libgen.h dirent.h endian.h])
 
 VERSION_MAJOR=_VERSION_MAJOR
 VERSION_MINOR=_VERSION_MINOR

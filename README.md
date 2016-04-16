@@ -30,7 +30,7 @@ For apt-based distributions you can generate a `.deb` for easier installation:
 
 1. ./configure
 2. sudo make deb
-3. dpkg -i datapack_*.deb
+3. sudo dpkg -i datapack_*.deb
 
 # Using with automake
 

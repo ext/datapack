@@ -1,0 +1,8 @@
+Package: datapack
+Section: devel
+Priority: optional
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: David Sveningsson <ext@sidvind.com>
+Description: Compress and store data inside executable
+Homepage: https://github.com/ext/datapack

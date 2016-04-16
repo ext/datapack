@@ -45,3 +45,19 @@ CLEANFILES = tests/data1.c tests/data1.h tests/data2.pak
 .dpl.pak: datapacker Makefile
 	@test x"$(@D)" = x || $(MKDIR_P) "$(@D)"
 	$(AM_V_GEN)${top_builddir}/datapacker -f $< -s $(dir $<) -t bin -o $@
+
+version=@VERSION@
+debversion=`echo $(version) | sed 's/_//'`
+debpkgname=datapack_${debversion}_@ARCH@
+
+deb: all check
+	@test "x${prefix}" = "x/usr" || (echo "Error: --prefix must be /usr when creating debian release (currently ${prefix})"; exit 1)
+	@test `id -u` = "0" || (echo "Error: must run as root to set proper permissions"; exit 1)
+	@test -e $(debpkgname) && rm -rf $(debpkgname) || true
+	mkdir -p $(debpkgname)/DEBIAN
+	cp deb-control $(debpkgname)/DEBIAN/control
+	$(MAKE) install DESTDIR=`pwd`/$(debpkgname)
+	strip `pwd`/$(debpkgname)/usr/bin/* `pwd`/$(debpkgname)/usr/lib/*.so
+	chmod 0755 `pwd`/$(debpkgname)/usr/bin/*
+	(cd $(debpkgname); find . -type f ! -regex '.*?debian-binary.*' ! -regex '.*?DEBIAN.*' -printf '%P ' | xargs md5sum > DEBIAN/md5sums)
+	dpkg-deb --build $(debpkgname)
